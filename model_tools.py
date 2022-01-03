@@ -7,7 +7,22 @@ from scipy.stats import mode
 from glob import glob
 from ruido.models.models import model_cdmx_discrete
 from scipy.signal import convolve
+import yaml
 
+def parse_input(configfile):
+
+    config = yaml.safe_load(open(configfile))
+    config["stas"] = [st1.split("_")[1] for st1 in config["stations"]]  # short name for kernel files
+    z = np.linspace(config["z0"], config["z1"], config["nz"])  # depth to consider
+    config["dz"] = z[1] - z[0]
+    config["z"] = z
+    config["t0"] = UTCDateTime(config["t0"])
+    config["t1"] = UTCDateTime(config["t1"])
+    refs = []
+    for ref in config["references"]:
+        refs.append(UTCDateTime(ref))
+    config["reftimes"] = refs
+    return config
 
 def model_SW_dG(p_in, c1, c2):
     # this function returns the derivative of the Wilson smooth model
@@ -27,10 +42,10 @@ def roeloffs(t, rain, r, B_skemp, nu, diff,
     dp = rho * g * rain
 
     r = np.tile(r, len(t)).reshape((len(t), len(r)))
-    t -= t.min()
-    t[0] = waterlevel
+    tax = t.copy() - t.min()
+    tax[0] = waterlevel
 
-    diffterm = np.divide(r.T,  np.sqrt(4 * diff * t))
+    diffterm = np.divide(r.T,  np.sqrt(4 * diff * tax))
 
     if model == "drained":
         irf = (1 - alpha) * erfc(diffterm)
@@ -51,8 +66,8 @@ def func_lin(independent_vars, params):
     slope = params[0]
     const = params[1]
 
-    y = slope * t + const
-    return(y)
+    dv_y = slope * t + const
+    return(dv_y)
 
 def func_quake(independent_vars, params):
     # Heaviside step function and logarithmic recovery
@@ -66,34 +81,38 @@ def func_quake(independent_vars, params):
     log = np.zeros(len(t))
     ix = np.where(t > tquake)[0]
     log[ix] = a * np.log((t[ix] - tquake))
-    return heavi * log - heavi * b
+    dv_quake = heavi * log - heavi * b
+    return dv_quake
 
-def get_rainload_p(t, z, rain_m, station, drained_undrained_both="both",
-                   use_clearyrice=True, diff_in=None, B_skemp=1.0,
-                   precomp_rain=None):
+def get_rainload_p(t, z, rain_m, station, diff_in=1.e-2, drained_undrained_both="both",
+                   ):
     # This function determines the response to precipitation in terms of pore pressure,
     # using Roeloff's impulse response to the 1-D coupled poroel. problem as defined above.
     z0 = 10
     # geology:
     vs, vp, rho, qs, qp, nu, B, nu_u = model_cdmx_discrete(z0, station, output="poroelastic")
-
-    # use inferred values for B and nu_u?
-    if use_clearyrice:
-        B_skemp = B
-        nu = nu_u
-    p =roeloffs(t, rain_m, z, B_skemp, nu, diff_in, model=drained_undrained_both)
+    p = roeloffs(t, rain_m, z, B, nu_u, diff_in, model=drained_undrained_both)
     return(p)
 
 def func_rain(independent_vars, params):
     # This function does the bookkeeping for predicting dv/v from pore pressure change.
     z = independent_vars[0]
+    dp_rain = independent_vars[1]
+    sta = independent_vars[2]
+    kernel = independent_vars[3]
     dz = z[1] - z[0]
-    kernel = independent_vars[1]
-    p = independent_vars[2]
-    rho_avg = independent_vars[3]
-    mu_avg = independent_vars[4]
-    dp_rain = independent_vars[5]
 
+    rhos = []
+    mus = []
+    for zz in z:
+        vs, vp, rho = model_cdmx_discrete(zz, sta)[0:3]
+        rhos.append(rho)
+        mus.append(vs ** 2 * rho)
+    rhos = np.array(rhos)
+    mus = np.array(mus)
+    p = np.cumsum(rhos * 9.81 * np.diff(z, prepend=0))
+    mu_avg = mus.mean()
+    rho_avg = rhos.mean()
     # params: sensitivity, diffusivity, station, method, kernel
     c1 = params[0]
     c2 = params[1]
@@ -101,7 +120,27 @@ def func_rain(independent_vars, params):
     dmudP = model_SW_dG(p, c1, c2)
     dbetadP = 1. / np.sqrt(rho_avg) * 1. / (2. * np.sqrt(mu_avg)) * dmudP
     stress_sensitivity = dbetadP
+    print(stress_sensitivity.min(), stress_sensitivity.max())
     # pore pressure is compressional
     dv_rain = np.dot(-dp_rain, stress_sensitivity * kernel * dz)
 
     return(dv_rain)
+
+
+def func_sciopt(t, c1, c2, slope, const, recov_eq, drop_eq, dp_rain,
+                K_vs, z, sta, n_channels):
+
+    vars_rain = [z, dp_rain, sta, K_vs]
+    params_rain = [c1, c2]
+
+    vars_quake = [t]
+    params_quake = [recov_eq, drop_eq]
+
+    vars_lin = [t]
+    params_lin = [slope, const]
+
+    term1 = func_rain(vars_rain, params_rain)
+    term2 = func_quake(vars_quake, params_quake)
+    term3 = func_lin(vars_lin, params_lin)
+
+    return(np.tile((term1 + term2 + term3), n_channels))

@@ -5,6 +5,7 @@ from obspy import UTCDateTime
 from glob import glob
 import matplotlib.pyplot as plt
 import numpy as np
+import re
 
 
 def kernels_map(sta):
@@ -41,33 +42,47 @@ def kernels_map(sta):
     return(kernels_map[sta])
 
 
-def get_met_data(sta, metdatadir, do_plots=False):
+def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
     # meteorologic observations:
     # load data for a year or multiple years
     met_files = "{}/{}/*/*prep.csv".format(metdatadir, sta)
-    print(met_files)
-
     files = glob(met_files)
     files.sort()
 
-    df = pd.read_csv(files[0])
+    df_w = pd.read_csv(files[0])
     for f in files[1:]:
         df2 = pd.read_csv(f)
-        df = pd.concat((df, df2), ignore_index=True)
+        df_w = pd.concat((df_w, df2), ignore_index=True)
 
     # get timestamps from time strings
     datetimes = []
-    for i in range(len(df)):
+    for i in range(len(df_w)):
         try:
-            datetime = UTCDateTime(df.Fecha_hora.values[i][0: 10] +
-                                   "T" + df.Fecha_hora.values[i][-8:])
+            datetime = UTCDateTime(df_w.Fecha_hora.values[i][0: 10] +
+                                   "T" + df_w.Fecha_hora.values[i][-8:])
             datetimes.append(datetime.timestamp)
         except (ValueError, TypeError):
             datetimes.append(np.nan)
-    df["timestamps"] = datetimes
-    df = df.dropna(subset=["timestamps", "Precipitacion_mm", "Temp_C",
-                           "Presion_bar_hPa"])
-    print(df.keys())
+    df_w["timestamps"] = datetimes
+    df_w = df_w.dropna(subset=["timestamps", "Precipitacion_mm"]).reset_index()
+    df_w["rain"] = df_w["Precipitacion_mm"].apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
+    df_w["Temp_C"] = df_w["Temp_C"].apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
+
+    # set up a new dataframe with a lower time resolution
+    df = pd.DataFrame(columns=df_w.keys())
+    df.timestamps = np.arange(np.nanmin(df_w.timestamps.values), np.nanmax(df_w.timestamps.values), int(time_resolution))
+    print("Old and new nr. timestamps: {}, {}".format(len(df_w), len(df)))
+    rain_avg = np.zeros(len(df))
+    temp_avg = np.zeros(len(df))
+    for ixt, timestamp in enumerate(df.timestamps.values):
+        rain_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
+                                      (df_w.timestamps < timestamp + 0.5 * time_resolution)].rain.mean())
+        temp_avg[ixt] = df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
+                             (df_w.timestamps < timestamp + 0.5 * time_resolution)].Temp_C.mean()
+    df["rain"] = rain_avg
+    df["Temp_C"] = temp_avg
+    df = df.dropna(subset=["rain"]).reset_index()
+
     if do_plots:
         plt.figure(figsize=(12, 3))
         plt.plot(df.timestamps, df.Precipitacion_mm)
@@ -85,7 +100,8 @@ def get_met_data(sta, metdatadir, do_plots=False):
         plt.tight_layout()
         plt.savefig("rain_{}.png".format(sta))
         plt.close()
-        return(df)
+
+    return(df)
 
 
 def adjust_dvv_offset(d1, d2, n=10, plot=False):
@@ -155,6 +171,7 @@ def stitch(dat, times_refs, plot=False):
     dat1["s_cc_before"] = np.zeros(len(dat))
     dat1["s_cc_after"] = np.zeros(len(dat))
     dat1["s_timestamps"] = np.zeros(len(dat))
+    dat1["s_err"] = np.zeros(len(dat))
     ix = 0
     off = 0.
     for ixt, t in enumerate(times_refs):
@@ -176,6 +193,7 @@ def stitch(dat, times_refs, plot=False):
         dat1["s_cc_before"].values[ix: ix + len(tp)] = tp.cc_before.values
         dat1["s_cc_after"].values[ix: ix + len(tp)] = tp.cc_after.values
         dat1["s_timestamps"].values[ix: ix + len(tp)] = tp.timestamps.values
+        dat1["s_err"].values[ix: ix + len(tp)] = tp.dvv_err.values
         ix += len(tp)
     dat1.s_dvv -= dat1.s_dvv.mean()
     return(dat1)
