@@ -23,41 +23,31 @@ import sys
 # depth sensitivity
 def get_c_from_str(fname):
     return(float(fname.split("=")[-1]))
-# Model for parameter fitting
-def model_dv(vars_rain, params_rain,
-    vars_quake, params_quake,
-    vars_lin, params_lin,
-    n_channels=6):
-    # t, c1, c2, slope, const, drop_eq, recov_eq, kernel, dz,
-    term1 = func_rain(vars_rain, params_rain)
-    term2 = func_quake(vars_quake, params_quake)
-    term3 = func_lin(vars_lin, params_lin)
-    return(np.tile((term1 + term2 + term3), n_channels))
-
 
 config = parse_input(sys.argv[1])
 t0_0 = config["t0"]
 t1_0 = config["t1"]
+T0 = 5
 
 # preparations
 if not os.path.exists(config["output_dir"]):
     os.makedirs(config["output_dir"])
 output_filename = "model_{}_{}.csv".format(config["tag"], config["inversion_type"])
 output_table = pd.DataFrame(columns=["sta", "ch1", "ch2", "f0_Hz", "t0_s", "cluster", "wave", "mode",
-                                     "diff", "c1", "c2", "slope", "offset", "recov_eq", "drop_eq",
-                                     "sig_c1", "sig_c2", "sig_slope", "sig_offset", "sig_recov_eq", "sig_drop_eq", "CC"])
+                                     "diff", "slope", "offset", "recov_eq", "drop_eq",
+                                     "sig_slope", "sig_offset", "sig_recov_eq", "sig_drop_eq",
+                                      "CC"])
 # load meteo data
 df = get_met_data(config["metstation"], config["meteo_data_dir"],
                   config["time_resolution"], do_plots=config["do_plots"])
+df = df[df.timestamps < config["t1"]]
+df = df[df.timestamps >= config["t0"]]
 
 # loop over stations
 for ixsta, sta in enumerate(config["stas"]):
     print(sta)
     # loop over clusters
     for cluster in config["clusters"]:
-        dfsubtest = df[df.timestamps < config["t1"]]
-        dfsubtest = dfsubtest[dfsubtest.timestamps >= config["t0"]]
-
         station = "cdmx_" + kernels_map(config["stas"][ixsta])
 
         for ixf, f_min in enumerate(config["f_mins"]):
@@ -71,6 +61,7 @@ for ixsta, sta in enumerate(config["stas"]):
                 data_array = []
                 sigma_array = []
                 n_channels = 0
+                t0_data = -1
                 for ixc, cp in enumerate(config["channelpairs"]):
                     channel1 = cp[0]
                     channel2 = cp[1]
@@ -95,14 +86,7 @@ for ixsta, sta in enumerate(config["stas"]):
                     dvv_df = dvv_df[dvv_df.t1_s == twin_max]
                     dvv_df = dvv_df[dvv_df.f0_Hz == f_min]
                     dvv_df = dvv_df[dvv_df.cluster == cluster]
-
-                    if "t0_data" in locals():
-                        t0_data = max(t0_data, dvv_df.timestamps.min())
-                        t1_data = min(t1_data, dvv_df.timestamps.max())
-                    else:
-                        t0_data = dvv_df.timestamps.min()
-                        t1_data = dvv_df.timestamps.max()
-                    # print("length dvv series: ", len(dvv_df))
+                    
 
                     dat1 = stitch(dvv_df, config["reftimes"], plot=config["do_plots"])
                     # print(dvv_df.timestamps)
@@ -111,6 +95,9 @@ for ixsta, sta in enumerate(config["stas"]):
                     dat1.s_dvv -= dat1.s_dvv.mean()
                     if len(dat1) < 10:
                         continue
+                    if t0_data == -1:
+                        t0_data = dat1.s_timestamps.min()
+                        t1_data = dat1.s_timestamps.max()
 
                     # interpolate onto df timestamps of met data
                     f = interp1d(dat1.s_timestamps, dat1.s_dvv, "linear", bounds_error=False, fill_value=0)
@@ -135,8 +122,8 @@ for ixsta, sta in enumerate(config["stas"]):
                     data_array.append(dvv_obs)
                     sigma_array.append(dfsub.error.values)
                 if len(data_array) == 0: continue
-                data_array = np.array(data_array)
-                sigma_array = np.array(sigma_array)
+                data_array = np.array(data_array, ndmin=2)
+                sigma_array = np.array(sigma_array, ndmin=2)
                 sigma_array[sigma_array == 0.0] = 1.e-6
 
                 # print("number of nans in precipitation data: ", np.isnan(rain_m).sum())
@@ -145,7 +132,7 @@ for ixsta, sta in enumerate(config["stas"]):
                 except NameError:
                     continue
 
-                # drop timestamps for which there isn't data.
+
                 kernels = glob("{}/kernels_{}.{}.f={}*".\
                     format(config["kernel_dir"], config["wavepol"], kernels_map(sta), f_min))
                 kernels.sort(key=get_c_from_str)
@@ -164,36 +151,33 @@ for ixsta, sta in enumerate(config["stas"]):
                 for diff in config["tdiffs"]:
                     p = get_rainload_p(t, config["z"], rain_m,
                         station, diff_in=diff, drained_undrained_both=config["roeloffs_method"])
-                    # set up the variables & parameters
-                    vars_rain = []
-                    vars_rain.append(config["z"])
-                    vars_rain.append(p)
-                    vars_rain.append(station)
-                    vars_rain.append(K_vs)
-                    params_rain = [0., 0.]
-
-                    vars_lin = []
-                    vars_lin.append(t)
-                    params_lin = [0., 0.]
                     
 
                     # choose the optimizer and run optimization
                     if config["inversion_type"] == "nonlinear_lsq":
-                        bounds = ([config["bounds_c1"][0],
-                                   config["bounds_c2"][0],
-                                   config["bounds_slope"][0],
+                        bounds = ([config["bounds_slope"][0],
                                    config["bounds_const"][0],
                                    config["bounds_recov_eq"][0],
-                                   config["bounds_drop_eq"][0]],
-                                  [config["bounds_c1"][1],
-                                   config["bounds_c2"][1],
-                                   config["bounds_slope"][1],
+                                   config["bounds_drop_eq"][0],
+                                   #config["bounds_m"][0],
+                                   #config["bounds_k"][0],
+                                   #config["bounds_yb"][0]
+                                   ],
+                                  [config["bounds_slope"][1],
                                    config["bounds_const"][1],
                                    config["bounds_recov_eq"][1],
-                                   config["bounds_drop_eq"][1]] )
-                        model_to_fit = lambda t, c1, c2, slope, const, recov_eq, drop_eq: \
-                        func_sciopt(t, c1, c2, slope, const, recov_eq, drop_eq, p,
-                                    K_vs, config["z"], station, n_channels=len(config["channelpairs"]))
+                                   config["bounds_drop_eq"][1],])
+                                   #config["bounds_m"][1],
+                                   #config["bounds_k"][1],
+                                   #config["bounds_yb"][1],] )
+
+
+                        model_to_fit = lambda t, slope, const, recov_eq, drop_eq:\
+                        func_sciopt(t, slope, const, recov_eq, drop_eq, # m, k, yb,
+                                    p, K_vs, config["z"], station, T0,
+                                    n_channels=len(config["channelpairs"])
+                                    )
+
                         # Fitting
                         if config["use_bounds"]:
                             params_mod, covariance_mod =\

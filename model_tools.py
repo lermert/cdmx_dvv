@@ -6,7 +6,7 @@ from scipy.special import erf, erfc
 from scipy.stats import mode
 from glob import glob
 from ruido.models.models import model_cdmx_discrete
-from scipy.signal import convolve
+from scipy.signal import fftconvolve
 import yaml
 
 def parse_input(configfile):
@@ -27,38 +27,42 @@ def parse_input(configfile):
 def model_SW_dG(p_in, c1, c2):
     # this function returns the derivative of the Wilson smooth model
     # for determining the sensitivity of stress with respect to pore pressure
-    p_in[0] = p_in[1]
+    p_in[0] = p_in[1] # avoid 0 division at the surfaace (no overburden pressure)
     return(c1 * c2 / 3. * np.power(c2 * p_in, -2./3.))
 
+def model_SW_dsdp(p_in, vs):
+    p_in[0] = p_in[1] # avoid 0 division at the surfaace (no overburden pressure)
+    return(vs / (6. * p_in))
 
-def roeloffs(t, rain, r, B_skemp, nu, diff,
-             rho=1000.0, g=9.81,
-             waterlevel=1.e-6,
-             model="both"):
-    # this function returns the convolution of the impulse response of the solution to the 1-D 
-    # homogeneous coupled poroelastic problem, derived by E. Roeloffs (1988), with a time series
-    # of rain that here is used as "hydraulic head change"
-    alpha = B_skemp * (1 + nu) / (3. - 3. * nu)
+def roeloffs_1depth(t, rain, r, B_skemp, nu, diff, rho, g, waterlevel, model):
     dp = rho * g * rain
+    dt = abs(mode(np.diff(t))[0][0])  # delta t, sampling (e.g. 1 day)
+    diffterm = 4. * diff * np.arange(len(t)) * dt
+    diffterm[0] = waterlevel
+    diffterm = r / np.sqrt(diffterm)
+    resp = erf(diffterm)
+    rp = np.zeros(len(resp) * 2)
+    rp[len(resp): ] = resp
 
-    r = np.tile(r, len(t)).reshape((len(t), len(r)))
-    tax = t.copy() - t.min()
-    tax[0] = waterlevel
 
-    diffterm = np.divide(r.T,  np.sqrt(4 * diff * tax))
-
-    if model == "drained":
-        irf = (1 - alpha) * erfc(diffterm)
-    elif model == "undrained":
-        irf = alpha
-    elif model == "both":
-        irf = alpha + (1 - alpha) * erfc(diffterm)
+    P_ud = fftconvolve(dp, rp, "same")
+    resp = erfc(diffterm)
+    rp = np.zeros(len(resp) * 2)
+    rp[len(resp): ] = resp
+    P_d = fftconvolve(dp, rp, "same")
+    if model == "both":
+        P = P_d + B_skemp * (1 + nu) / (3. - 3. * nu) * P_ud
     else:
-        raise ValueError("Model must be \"drained\" or \"undrained\" or \"both\".")
-    P = np.zeros((len(t), r.shape[1]))
-    for i in range(r.shape[1]):
-        P[:, i] = convolve(irf[i, :], dp, mode="same")
+        raise ValueError("Cookies were too plentiful in Bern.")
     return P
+
+def roeloffs(t, rain, r, B_skemp, nu, diff, rho=1000.0, g=9.81, waterlevel=1.e-6, model="both"):
+    s_rain = np.zeros((len(t), len(r)))
+    for i, depth in enumerate(r):
+        p = roeloffs_1depth(t, rain, depth, B_skemp, nu, diff, rho, g, waterlevel, model)
+        s_rain[:, i] = p
+    return(s_rain)
+
 
 def func_lin(independent_vars, params):
     # linear trend
@@ -94,44 +98,76 @@ def get_rainload_p(t, z, rain_m, station, diff_in=1.e-2, drained_undrained_both=
     p = roeloffs(t, rain_m, z, B, nu_u, diff_in, model=drained_undrained_both)
     return(p)
 
-def func_rain(independent_vars, params):
+def temperature_dv_tsai(t, z, m, mu, k, nu, alpha_th, T0, kappa, yb, w):
+    A_t = (1. + nu) / (1. - nu) * k * alpha_th * T0 *\
+     np.sqrt(kappa / w) * np.exp(-np.sqrt(2/(2.*kappa) * yb))\
+     * np.cos(w * t - np.sqrt(w / (2. * kappa)) * yb - np.pi / 4.)
+
+    return m / mu * A_t * np.exp(-k*z)
+
+def func_temp(independent_vars, params):
+    t = independent_vars[0]
+    z = independent_vars[1]
+    mu = independent_vars[2]
+    nu = independent_vars[3]
+    T0 = independent_vars[4]
+    kernel = independent_vars[5]
+    dz = z[1] - z[0]
+
+
+    m = params[0]
+    k = params[1]
+    yb = params[2]
+
+    alpha_th = 1.e-5  # berger 1975
+    kappa = 1.e-6
+    w = 2. * np.pi / (364.25 * 86400.)
+    
+    
+    dvv_T = np.zeros((len(t), len(z)))
+    for i, zz in enumerate(z):
+        dvv_T[:, i] = temperature_dv_tsai(t, zz, m, mu[i], k, nu[i], alpha_th, T0, kappa, yb, w)
+    dv_thermoel = np.dot(dvv_T, kernel * dz)
+    # return(dv_thermoel)
+
+    return(np.zeros(len(t)))
+
+def func_rain(independent_vars):
     # This function does the bookkeeping for predicting dv/v from pore pressure change.
     z = independent_vars[0]
     dp_rain = independent_vars[1]
-    sta = independent_vars[2]
-    kernel = independent_vars[3]
+    rhos = independent_vars[2]
+    mus = independent_vars[3]
+    kernel = independent_vars[4]
     dz = z[1] - z[0]
 
-    rhos = []
-    mus = []
-    for zz in z:
-        vs, vp, rho = model_cdmx_discrete(zz, sta)[0:3]
-        rhos.append(rho)
-        mus.append(vs ** 2 * rho)
-    rhos = np.array(rhos)
-    mus = np.array(mus)
     p = np.cumsum(rhos * 9.81 * np.diff(z, prepend=0))
-    mu_avg = mus.mean()
-    rho_avg = rhos.mean()
-    # params: sensitivity, diffusivity, station, method, kernel
-    c1 = params[0]
-    c2 = params[1]
-
-    dmudP = model_SW_dG(p, c1, c2)
-    dbetadP = 1. / np.sqrt(rho_avg) * 1. / (2. * np.sqrt(mu_avg)) * dmudP
-    stress_sensitivity = dbetadP
-    print(stress_sensitivity.min(), stress_sensitivity.max())
-    # pore pressure is compressional
+    stress_sensitivity = model_SW_dsdp(p, np.sqrt(mus / rhos))
     dv_rain = np.dot(-dp_rain, stress_sensitivity * kernel * dz)
 
     return(dv_rain)
 
 
-def func_sciopt(t, c1, c2, slope, const, recov_eq, drop_eq, dp_rain,
-                K_vs, z, sta, n_channels):
+def func_sciopt(t, slope, const, recov_eq, drop_eq, # m, k, yb,
+                dp_rain, K_vs, z, sta, T0, n_channels):
+    
+    rhos = []
+    mus = []
+    nus = []
+    for zz in z:
+        vs, vp, rho = model_cdmx_discrete(zz, sta)[0:3]
+        rhos.append(rho)
+        mus.append(vs ** 2 * rho)
+        ab = vp / vs
+        nus.append((ab ** 2 - 2) / (2 * ab**2 - 2))
+    rhos = np.array(rhos)
+    mus = np.array(mus)
+    nus = np.array(nus)
+    
+    vars_rain = [z, dp_rain, rhos, mus, K_vs]
 
-    vars_rain = [z, dp_rain, sta, K_vs]
-    params_rain = [c1, c2]
+    #vars_temp = [t, z, mus, nus, T0, K_vs]
+   # params_temp = [m, k, yb]
 
     vars_quake = [t]
     params_quake = [recov_eq, drop_eq]
@@ -139,8 +175,9 @@ def func_sciopt(t, c1, c2, slope, const, recov_eq, drop_eq, dp_rain,
     vars_lin = [t]
     params_lin = [slope, const]
 
-    term1 = func_rain(vars_rain, params_rain)
-    term2 = func_quake(vars_quake, params_quake)
-    term3 = func_lin(vars_lin, params_lin)
+    term1 = func_rain(vars_rain)#, params_rain)
+   # term2 = func_temp(vars_temp, params_temp)
+    term3 = func_quake(vars_quake, params_quake)
+    term4 = func_lin(vars_lin, params_lin)
 
-    return(np.tile((term1 + term2 + term3), n_channels))
+    return(np.tile((term1 + term3 + term4), n_channels))

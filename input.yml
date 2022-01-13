@@ -1,0 +1,133 @@
+# ============================================================
+# input for post processing the dv/v results from cdmx
+# ============================================================
+tag: "test"
+# directories: input (where csv files of dv/v are),
+# meteorology data, kernels, output
+input_dir: "measurements/msr_rsvm/"
+meteo_data_dir: "meteo_cdmx/"
+kernel_dir: "kernels/"
+output_dir: "lsq_output_1"
+# time: from when to when
+# format YYYY,jjj or YYYY-mm-dd
+t0: "2017-01-01"
+t1: "2021-06-01"
+# which channelpairs to use?
+channelpairs: 
+-  - "HLZ"
+   - "HLZ"
+-  - "HLN"
+   - "HLN"
+-  - "HLZ"
+   - "HLN"
+# references stack beginning dates can be in format
+# YYYY,jjj or YYYY-mm-dd
+references:
+- "2018,001"
+- "2019,001"
+- "2020,001"
+# time resolution for meteo data averaging (original data has 
+# hourly sampling, and this is unnecessarily high for running the inversion)
+time_resolution: 259200.0
+# which frequencies to consider?
+f_mins:
+- 0.25
+- 0.5
+- 1.0
+- 2.0
+- 4.0
+# type of waves (For Rayleigh, specify psv and for love sh)
+wavepol: "psv"
+# which mode to assume (0, 1, 2)
+mode_nr: 0
+# minimum quality (by CC to reference after stretch)
+min_quality: 0.0
+# clusters to use
+clusters:
+    - 3
+# trial values for hydraulic diffusivity in m^2/s
+tdiffs:
+- 1.0    # sand
+#- 1.0e-1 # another sand
+#- 1.0e-2 # another sand
+#- 1.0e-3 # another sand
+- 1.0e-4 # clay
+- 1.0e-5 # another clay 
+- 5.e-6  # another clay
+roeloffs_method: "both"  # d for drained, ud for undrained, both for both
+# depths to consider for fitting rain in m. nz controls how many depth steps
+z0: 0.0
+z1: 1000.0
+nz: 201
+# station list
+stations:
+- "cdmx_vrvm"
+- "cdmx_covm"
+- "cdmx_bjvm"
+- "cdmx_aovm"
+- "cdmx_cjvm"
+- "cdmx_ctvm"
+- "cdmx_icvm"
+- "cdmx_mhvm"
+- "cdmx_thvm"
+- "cdmx_tlvm"
+- "cdmx_vrvm"
+- "cdmx_xcvm"
+# station for meteorologic data. ENP7 is longest running, few gaps, city center
+metstation: "ENP7"
+# inversion: Bounds (lower and upper bound of uniform prior)
+bounds_c1: 
+- -1.0e12
+- 1.0e3
+bounds_c2: 
+- 0.0
+- 1.0e9
+bounds_recov_eq: # dv/v recovery, no unit (0.01 is 1% recovery per time interval)
+- 0.0
+- 0.1
+bounds_drop_eq: # dv/v drop, no unit (0.01 is 1% drop)
+- 0.0
+- 0.15
+bounds_slope:  # dv/v slope in second^-1 (0.01 is 1% slope per second)
+- -5.0e-7
+- 5.0e-7
+bounds_const:
+- -0.2
+- 0.2
+bounds_m:
+- -3.0e12
+- -3.0e7
+bounds_k:
+- 0.00001
+- 0.01
+bounds_yb:
+- 0.0
+- 10.0
+# plotting
+do_plots: True
+
+# inversion type: nonlinear_lsq or mcmc
+inversion_type: "nonlinear_lsq"
+use_bounds: true
+# n_iterations = 30000
+# n_initializations = 1
+# burn_in = 1000  # integer please
+# param_shortnames = ["EQ_rate", "EQ_drop", "Slope", "Offset", "C1_WS", "C2_WS", "Gamma"]
+# bounds_a_eq = [0.0, 0.1]
+# bounds_b_eq = [0., 0.1]  # positive b_eq: velocity drop
+# bounds_slope = [-0.05 / (365*86400.), 0.05 / (365*86400.)]
+# bounds_const = [-1, 1]
+# bounds_c1 = [0, 1.e8]
+# bounds_c2 = [0, 1.e9]
+# bounds_gamma = [0.2, 2.0]
+
+# radius_a_eq = 0.0015 #0.001 #0.0012
+# radius_b_eq = 0.1 * radius_a_eq  #2 * bounds_b_eq[1] / bounds_a_eq[1] * radius_a_eq  # 10
+# radius_slope = radius_a_eq / (365 * 86400.) # 5 * bounds_slope[1] / bounds_a_eq[1] * radius_a_eq  # 25
+# radius_const = 100 * radius_a_eq # 50 5 * bounds_const[1] / bounds_a_eq[1] * radius_a_eq  # 25
+# radius_c1 = 1000 / radius_a_eq #10
+# radius_c2 = 10000 / radius_a_eq #500
+
+# radius_gamma = 40 * radius_a_eq
+# update_radii = False
+# limits_acceptance = [0.8, 0.95]
