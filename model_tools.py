@@ -8,6 +8,9 @@ from glob import glob
 from ruido.models.models import model_cdmx_discrete
 from scipy.signal import fftconvolve
 import yaml
+from model_tools_okubosan import logheal_llc
+from scipy.interpolate import interp1d
+
 
 def parse_input(configfile):
 
@@ -24,69 +27,65 @@ def parse_input(configfile):
     config["reftimes"] = refs
     return config
 
-def model_SW_dG(p_in, c1, c2):
-    # this function returns the derivative of the Wilson smooth model
-    # for determining the sensitivity of stress with respect to pore pressure
-    p_in[0] = p_in[1] # avoid 0 division at the surfaace (no overburden pressure)
-    return(c1 * c2 / 3. * np.power(c2 * p_in, -2./3.))
+#################################################
+# Hydrology: 1-D poroelastic response to rainfall
+#################################################
 
-def model_SW_dsdp(p_in, vs):
-    p_in[0] = p_in[1] # avoid 0 division at the surfaace (no overburden pressure)
-    return(vs / (6. * p_in))
+def model_SW_dsdp(p_in, waterlevel=100.):
+    # 1 / vs  del v_s / del p: Derivative of shear wave velocity to effective pressure
+    # identical for Walton smooth model and Hertz-Mindlin model
+    # input: 
+    # p_in (array of int or float): effective pressure (hydrostatic - pore)
+    # waterlevel: to avoid 0 division at the free surface. Note that results are sensitive to this parameter.
+    # output: 1/vs del vs / del p
+    p_in[0] = waterlevel
+    return(1. / (6. * p_in))
 
 def roeloffs_1depth(t, rain, r, B_skemp, nu, diff, rho, g, waterlevel, model):
+    # evaluate Roeloff's response function for a specific depth r
+    # input:
+    # t: time vector in seconds
+    # rain: precipitation time series in m
+    # r: depth in m
+    # B_skemp: Skempton's coefficient (no unit)
+    # nu: Poisson ratio (no unit)
+    # diff: Hydraulic diffusivity, m^2/s
+    # rho: Density of water (kg / m^3)
+    # g: gravitational acceleration (N / kg)
+    # waterlevel: to avoid zero division at the surface. Results are not sensitive to the choice of waterlevel
+    # model: drained, undrained or both (see Roeloffs, 1988 paper)
+    # output: Pore pressure time series at depth r
     dp = rho * g * rain
     dt = abs(mode(np.diff(t))[0][0])  # delta t, sampling (e.g. 1 day)
     diffterm = 4. * diff * np.arange(len(t)) * dt
     diffterm[0] = waterlevel
     diffterm = r / np.sqrt(diffterm)
+    
     resp = erf(diffterm)
-    rp = np.zeros(len(resp) * 2)
-    rp[len(resp): ] = resp
-
-
-    P_ud = fftconvolve(dp, rp, "same")
+    rp = np.zeros(len(resp))
+    rp[0: len(resp)] = resp
+    P_ud = fftconvolve(rp, dp, "full")[0: len(dp)]
+    
     resp = erfc(diffterm)
-    rp = np.zeros(len(resp) * 2)
-    rp[len(resp): ] = resp
-    P_d = fftconvolve(dp, rp, "same")
+    rp = np.zeros(len(resp))
+    rp[0: len(resp)] = resp
+    P_d = fftconvolve(rp, dp, "full")[0: len(dp)]
     if model == "both":
         P = P_d + B_skemp * (1 + nu) / (3. - 3. * nu) * P_ud
+    elif model == "drained":
+        P = P_d
+    elif model == "undrained":
+        P = B_skemp * (1 + nu) / (3. - 3. * nu) * P_ud
     else:
-        raise ValueError("Cookies were too plentiful in Bern.")
+        raise ValueError("Unknown model for Roeloff's poroelastic response. Model must be \"drained\" or \"undrained\" or \"both\".")
     return P
 
-def roeloffs(t, rain, r, B_skemp, nu, diff, rho=1000.0, g=9.81, waterlevel=1.e-6, model="both"):
+def roeloffs(t, rain, r, B_skemp, nu, diff, rho=1000.0, g=9.81, waterlevel=1.e-12, model="both"):
     s_rain = np.zeros((len(t), len(r)))
     for i, depth in enumerate(r):
         p = roeloffs_1depth(t, rain, depth, B_skemp, nu, diff, rho, g, waterlevel, model)
         s_rain[:, i] = p
     return(s_rain)
-
-
-def func_lin(independent_vars, params):
-    # linear trend
-    t = independent_vars[0]
-    slope = params[0]
-    const = params[1]
-
-    dv_y = slope * t + const
-    return(dv_y)
-
-def func_quake(independent_vars, params):
-    # Heaviside step function and logarithmic recovery
-    # used to describe earthquake dv/v following Nakata & Snieder, 2011
-    t = independent_vars[0]
-    a = params[0]
-    b = params[1]
-    s0 = 1.
-    tquake = UTCDateTime("2017,09,19").timestamp
-    heavi = np.heaviside(t-tquake, s0)
-    log = np.zeros(len(t))
-    ix = np.where(t > tquake)[0]
-    log[ix] = a * np.log((t[ix] - tquake))
-    dv_quake = heavi * log - heavi * b
-    return dv_quake
 
 def get_rainload_p(t, z, rain_m, station, diff_in=1.e-2, drained_undrained_both="both",
                    ):
@@ -98,86 +97,190 @@ def get_rainload_p(t, z, rain_m, station, diff_in=1.e-2, drained_undrained_both=
     p = roeloffs(t, rain_m, z, B, nu_u, diff_in, model=drained_undrained_both)
     return(p)
 
-def temperature_dv_tsai(t, z, m, mu, k, nu, alpha_th, T0, kappa, yb, w):
-    A_t = (1. + nu) / (1. - nu) * k * alpha_th * T0 *\
-     np.sqrt(kappa / w) * np.exp(-np.sqrt(2/(2.*kappa) * yb))\
-     * np.cos(w * t - np.sqrt(w / (2. * kappa)) * yb - np.pi / 4.)
 
-    return m / mu * A_t * np.exp(-k*z)
-
-def func_temp(independent_vars, params):
+# another one where diffusivity is variable
+def func_rain(independent_vars, params):
+    # This function does the bookkeeping for predicting dv/v from pore pressure change.
     t = independent_vars[0]
     z = independent_vars[1]
-    mu = independent_vars[2]
-    nu = independent_vars[3]
-    T0 = independent_vars[4]
+    rain_m = independent_vars[2]
+    station = independent_vars[3]
+    rhos = independent_vars[4]
     kernel = independent_vars[5]
     dz = z[1] - z[0]
 
-
-    m = params[0]
-    k = params[1]
-    yb = params[2]
-
-    alpha_th = 1.e-5  # berger 1975
-    kappa = 1.e-6
-    w = 2. * np.pi / (364.25 * 86400.)
-    
-    
-    dvv_T = np.zeros((len(t), len(z)))
-    for i, zz in enumerate(z):
-        dvv_T[:, i] = temperature_dv_tsai(t, zz, m, mu[i], k, nu[i], alpha_th, T0, kappa, yb, w)
-    dv_thermoel = np.dot(dvv_T, kernel * dz)
-    # return(dv_thermoel)
-
-    return(np.zeros(len(t)))
-
-def func_rain(independent_vars):
-    # This function does the bookkeeping for predicting dv/v from pore pressure change.
-    z = independent_vars[0]
-    dp_rain = independent_vars[1]
-    rhos = independent_vars[2]
-    mus = independent_vars[3]
-    kernel = independent_vars[4]
-    dz = z[1] - z[0]
-
-    p = np.cumsum(rhos * 9.81 * np.diff(z, prepend=0))
-    stress_sensitivity = model_SW_dsdp(p, np.sqrt(mus / rhos))
+    waterlevel = params[0]
+    diff = params[1]
+    dp_rain = get_rainload_p(t, z, rain_m, station, diff_in=diff)
+    p = np.cumsum(rhos * 9.81 * dz)  # overburden / hydrostatic pressure
+    stress_sensitivity = model_SW_dsdp(p, waterlevel)
     dv_rain = np.dot(-dp_rain, stress_sensitivity * kernel * dz)
 
     return(dv_rain)
 
 
-def func_sciopt(t, slope, const, recov_eq, drop_eq, # m, k, yb,
-                dp_rain, K_vs, z, sta, T0, n_channels):
+def func_rain1(independent_vars, params):
+    # This function does the bookkeeping for predicting dv/v from pore pressure change.
+    z = independent_vars[0]
+    dp_rain = independent_vars[1]
+    rhos = independent_vars[2]
+    kernel = independent_vars[3]
+    dz = z[1] - z[0]
+    waterlevel = params[0]
+
+    p = np.cumsum(rhos * 9.81 * dz)  # overburden / hydrostatic pressure
+    stress_sensitivity = model_SW_dsdp(p, waterlevel)
+    dv_rain = np.dot(dp_rain, stress_sensitivity * kernel * dz)
+
+    return(dv_rain)
+
+#################################################
+# Linear velocity change
+#################################################
+
+def func_lin(independent_vars, params):
+    # linear trend
+    t = independent_vars[0]
+    slope = params[0]
+    const = params[1]
+
+    dv_y = slope * t + const
+    return(dv_y)
+
+#################################################
+# Co- and postseismic velocity change
+#################################################
+
+# a: logarithmic, bounding recovery to original value of velocity
+# drop_eq is the drop
+# a controls how fast it recovers
+def func_quake(independent_vars, params, time_quake="2017,09,19,18,14,00"):
+    # Heaviside step function and logarithmic recovery
+    # used to describe earthquake dv/v following Nakata & Snieder, 2011
+    # also compatible with Snieder et al. (2017) for tau_min << t << tau_max
+    t = independent_vars[0]
+    drop_eq = params[0]
+    a = params[1]
+    # b = params[2]
+    # assert b > a, ValueError("Parameter b must be greater than parameter a")
+
+    tquake = UTCDateTime(time_quake).timestamp
+    heavi = np.heaviside(t-tquake, 1.)
     
+    log = np.zeros(len(t))
+    ix = np.where(t > tquake)[0]
+    log[ix] = drop_eq / a * np.log((t[ix] - tquake))
+    dv_quake = log - heavi * drop_eq
+    return dv_quake
+
+# b: healing
+def func_healing(independent_vars, params, time_quake="2017,09,19,18,14,00"):
+    # full implementation of Snieder's healing model from Snieder et al. 2017
+    # but faster -- by Kurama Okubo
+    t = independent_vars[0]
+
+    t_low = np.linspace(t.min(), t.max(), 100)
+    # print((t_low[1] - t_low[0]) / 86400.0)
+    tau_min = 0.1
+    tau_max = params[0]
+    drop_eq = params[1]
+    tquake = UTCDateTime(time_quake).timestamp
+    
+
+    tax = t_low - tquake
+    ixt = tax > 0
+    tax[~ixt] = 0.0
+
+    dv_quake_low = np.zeros(len(tax))
+
+    # separate function accelerated by c and low level callback for scipy quad
+    dv_quake_low[ixt] = [logheal_llc(tt, tau_min, tau_max, drop_eq) for tt in tax[ixt]]
+    dv_quake_low /= logheal_llc(tau_min, tau_min, tau_max, -1)
+    # reinterpolate
+    f = interp1d(t_low, dv_quake_low, bounds_error=False)
+    dv_quake = f(t)
+    return(dv_quake)
+
+
+
+#################################################
+# Thermoelastic effect following Richter et al., 2015
+#################################################
+
+def temperature_dv_richter(z, nu, alpha, kappa, toe, k, T_surface, w):
+    gamma = np.sqrt(w / (2. * kappa))
+    exp1 = 2. * np.exp(-(1 + 1.j) * gamma * z)
+    exp2 = -(1. + nu) * (1. - nu) * k / gamma * np.exp(-k * z)
+    fac = alpha * (1. + nu) / (1. - nu) * toe * T_surface  # T_surface is a cosine describing surface temperature
+    return(fac * np.abs(exp1 * exp2))
+
+def func_temp(independent_vars, params):
+    raise NotImplementedError("Probably not correct")
+    t = independent_vars[0]
+    z = independent_vars[1]
+
+    nu = independent_vars[2]
+    T_surface = independent_vars[3]
+    kernel = independent_vars[4]
+    dz = z[1] - z[0]
+
+    k = params[0]
+    toe = params[1]
+
+    alpha_th = 1.e-5  # berger 1975
+    kappa = 1.e-6
+    w = 2. * np.pi / (364.25 * 86400.)
+
+    dvv_T = np.zeros((len(t), len(z)))
+
+    for i, zz in enumerate(z):
+        dvv_T[:, i] = temperature_dv_richter(zz, nu[i], alpha_th,
+                                             kappa, toe, k, T_surface, w)
+    dv_thermoel = np.dot(dvv_T, kernel * dz)
+    return(dv_thermoel)
+
+
+
+def func_temp1(independent_vars, params):
+
+    t = independent_vars[0]
+    T_surface = independent_vars[1]
+
+    shift = params[0]
+    scale = params[1]
+
+    f = interp1d(t, T_surface, kind="nearest", bounds_error=False, fill_value="extrapolate")
+
+    t_new = t - shift
+    temp_new = scale * f(t_new)
+
+    return(temp_new)
+
+#################################################
+# Bookkeeping to get material parameters
+#################################################
+def get_rho_nu(z, sta):
     rhos = []
-    mus = []
     nus = []
     for zz in z:
         vs, vp, rho = model_cdmx_discrete(zz, sta)[0:3]
         rhos.append(rho)
-        mus.append(vs ** 2 * rho)
         ab = vp / vs
         nus.append((ab ** 2 - 2) / (2 * ab**2 - 2))
     rhos = np.array(rhos)
-    mus = np.array(mus)
     nus = np.array(nus)
-    
-    vars_rain = [z, dp_rain, rhos, mus, K_vs]
+    return(rhos, nus)
 
-    #vars_temp = [t, z, mus, nus, T0, K_vs]
-   # params_temp = [m, k, yb]
+#################################################
+# Bookkeeping to set up the full model
+#################################################
 
-    vars_quake = [t]
-    params_quake = [recov_eq, drop_eq]
+def func_sciopt(t, list_models, list_vars, list_params, n_channels):
 
-    vars_lin = [t]
-    params_lin = [slope, const]
+    model = np.zeros(len(t))
+    for ixm, m in enumerate(list_models):
+        model += m(list_vars[ixm], list_params[ixm])
 
-    term1 = func_rain(vars_rain)#, params_rain)
-   # term2 = func_temp(vars_temp, params_temp)
-    term3 = func_quake(vars_quake, params_quake)
-    term4 = func_lin(vars_lin, params_lin)
 
-    return(np.tile((term1 + term3 + term4), n_channels))
+    return(np.tile(model, n_channels))
+

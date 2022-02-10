@@ -3,6 +3,7 @@
 import pandas as pd
 from obspy import UTCDateTime
 from glob import glob
+from scipy.stats import mode
 import matplotlib.pyplot as plt
 import numpy as np
 import re
@@ -41,6 +42,11 @@ def kernels_map(sta):
 
     return(kernels_map[sta])
 
+def tempcosine(t, a, p):
+    period = 365.25 * 86400. 
+    dt = abs(mode(np.diff(t))[0][0])  # delta t, sampling (e.g. 1 day)
+    t_ax = np.arange(len(t)) * dt
+    return(a * np.cos(2. * np.pi * 1./period * t_ax + p))
 
 def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
     # meteorologic observations:
@@ -64,24 +70,36 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
         except (ValueError, TypeError):
             datetimes.append(np.nan)
     df_w["timestamps"] = datetimes
-    df_w = df_w.dropna(subset=["timestamps", "Precipitacion_mm"]).reset_index()
+    #df_w = df_w.dropna(subset=["timestamps", "Precipitacion_mm"]).reset_index()
     df_w["rain"] = df_w["Precipitacion_mm"].apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
     df_w["Temp_C"] = df_w["Temp_C"].apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
-
+    df_w["rain"] = np.nan_to_num(df_w.rain.values)
+    
+    meantemp = df_w.Temp_C.mean()
+    df_w["Temp_C"] = np.nan_to_num(df_w.Temp_C.values, nan=meantemp)
+    # print("rain mean", df_w.rain.mean())
+    # print("Temp mean", df_w.Temp_C.mean())
     # set up a new dataframe with a lower time resolution
     df = pd.DataFrame(columns=df_w.keys())
     df.timestamps = np.arange(np.nanmin(df_w.timestamps.values), np.nanmax(df_w.timestamps.values), int(time_resolution))
-    print("Old and new nr. timestamps: {}, {}".format(len(df_w), len(df)))
+    # print("Old and new nr. timestamps: {}, {}".format(len(df_w), len(df)))
     rain_avg = np.zeros(len(df))
     temp_avg = np.zeros(len(df))
     for ixt, timestamp in enumerate(df.timestamps.values):
-        rain_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
-                                      (df_w.timestamps < timestamp + 0.5 * time_resolution)].rain.mean())
-        temp_avg[ixt] = df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
-                             (df_w.timestamps < timestamp + 0.5 * time_resolution)].Temp_C.mean()
+        # rain_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
+        #                               (df_w.timestamps < timestamp + 0.5 * time_resolution)].rain.mean())
+        # temp_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
+        #                               (df_w.timestamps < timestamp + 0.5 * time_resolution)].Temp_C.mean())
+        rain_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - time_resolution) &
+                                      (df_w.timestamps < timestamp + time_resolution)].rain.mean())
+        temp_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - time_resolution) &
+                                      (df_w.timestamps < timestamp + time_resolution)].Temp_C.mean())
     df["rain"] = rain_avg
     df["Temp_C"] = temp_avg
-    df = df.dropna(subset=["rain"]).reset_index()
+
+    #plt.plot(df.timestamps, df.rain, "slateblue")
+    #plt.plot(df.timestamps, df.Temp_C, "firebrick")
+    #plt.show()
 
     if do_plots:
         plt.figure(figsize=(12, 3))
@@ -153,7 +171,7 @@ def adjust_dvv_offset(d1, d2, n=10, plot=False):
             plt.xticks(locs, xticklabels, rotation=45)
             plt.tight_layout()
     else:
-        print("No overlap")
+        # print("No overlap")
         offset = 0.
         optimal_offset = 0.0
     return(optimal_offset)
@@ -174,26 +192,33 @@ def stitch(dat, times_refs, plot=False):
     dat1["s_err"] = np.zeros(len(dat))
     ix = 0
     off = 0.
-    for ixt, t in enumerate(times_refs):
-        if ixt > 0:
-            dat_until = dat[dat.timestamps < times_refs[ixt]]
-            off += adjust_dvv_offset(dat_until[dat_until.tag == ixt - 1], dat[dat.tag == ixt], n=10, plot=plot)
-            plot = False
-        else:
-            off = 0.0
-        if ixt < len(times_refs) - 1 and ixt > 0:
-            cond = (dat.tag == ixt) & (dat.timestamps >= t) & (dat.timestamps < times_refs[ixt + 1])
-        elif ixt == 0:
-            cond = (dat.tag == ixt) & (dat.timestamps < times_refs[ixt + 1])
-        else:
-            cond = (dat.tag == ixt) & (dat.timestamps >= t)
+    if len(times_refs) > 1:
+        for ixt, t in enumerate(times_refs):
+            if ixt > 0:
+                dat_until = dat[dat.timestamps < times_refs[ixt]]
+                off += adjust_dvv_offset(dat_until[dat_until.tag == ixt - 1], dat[dat.tag == ixt], n=10, plot=plot)
+                plot = False
+            else:
+                off = 0.0
+            if ixt < len(times_refs) - 1 and ixt > 0:
+                cond = (dat.tag == ixt) & (dat.timestamps >= t) & (dat.timestamps < times_refs[ixt + 1])
+            elif ixt == 0:
+                cond = (dat.tag == ixt) & (dat.timestamps < times_refs[ixt + 1])
+            else:
+                cond = (dat.tag == ixt) & (dat.timestamps >= t)
 
-        tp = dat[cond].copy()
-        dat1["s_dvv"].values[ix: ix + len(tp)] = tp.dvv.values - off
-        dat1["s_cc_before"].values[ix: ix + len(tp)] = tp.cc_before.values
-        dat1["s_cc_after"].values[ix: ix + len(tp)] = tp.cc_after.values
-        dat1["s_timestamps"].values[ix: ix + len(tp)] = tp.timestamps.values
-        dat1["s_err"].values[ix: ix + len(tp)] = tp.dvv_err.values
-        ix += len(tp)
+            tp = dat[cond].copy()
+            dat1["s_dvv"].values[ix: ix + len(tp)] = tp.dvv.values - off
+            dat1["s_cc_before"].values[ix: ix + len(tp)] = tp.cc_before.values
+            dat1["s_cc_after"].values[ix: ix + len(tp)] = tp.cc_after.values
+            dat1["s_timestamps"].values[ix: ix + len(tp)] = tp.timestamps.values
+            dat1["s_err"].values[ix: ix + len(tp)] = tp.dvv_err.values
+            ix += len(tp)
+    else:
+        dat1["s_dvv"] = dat.dvv.values
+        dat1["s_cc_before"] = dat.cc_before.values
+        dat1["s_cc_after"] = dat.cc_after.values
+        dat1["s_timestamps"] = dat.timestamps.values
+        dat1["s_err"] = dat.dvv_err.values
     dat1.s_dvv -= dat1.s_dvv.mean()
     return(dat1)
