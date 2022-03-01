@@ -7,7 +7,75 @@ from scipy.stats import mode
 import matplotlib.pyplot as plt
 import numpy as np
 import re
+import os
+from scipy.interpolate import interp1d
 
+
+def prep_data(df, channel1, channel2, config, f_min, f_max, twin_min, twin_max, sta, cluster=3):
+    # collect all the channels in an array
+    data_array = []
+    sigma_array = []
+    t0_data = -1
+
+    try:
+        f_to_read = os.path.join(config["input_dir"],
+                                 "{}.{}-{}.{}_stretching_list.csv".format(sta.upper(), channel1, sta.upper(), channel2))
+        dvv_df_or = pd.read_csv(f_to_read)
+        dvv_df_or.dropna(inplace=True)
+    except:
+        print("could not read {}".format(f_to_read))
+        return [], [], [], [], [], False
+
+    # #### Read and stitch the seismic data (dv/v)
+    # selection by quality, frequency range, time window, etc
+    dvv_df = dvv_df_or[dvv_df_or.t0_s == twin_min]
+    dvv_df = dvv_df[dvv_df.t1_s == twin_max]
+    dvv_df = dvv_df[dvv_df.f0_Hz == f_min]
+    dvv_df = dvv_df[dvv_df.cluster == cluster]
+
+    dat1 = stitch(dvv_df, config["reftimes"], plot=False)
+    dat1 = dat1[dat1.s_cc_after >= config["min_quality"]]
+    dat1.s_dvv -= dat1.s_dvv.mean()
+    if len(dat1) < 10:
+        print("Insufficient number of data points with quality > {}".format(config["min_quality"]))
+        return [], [], [], [], [], False
+
+    if t0_data == -1:
+        t0_data = dat1.s_timestamps.min()
+        t1_data = dat1.s_timestamps.max()
+
+    # independent variables & observations
+    dfsub = df[df.timestamps < min(config["t1"].timestamp, t1_data)].copy()
+    dfsub = dfsub[dfsub.timestamps >= max(config["t0"].timestamp, t0_data)] 
+
+    # interpolate onto df timestamps of met data
+    f = interp1d(dat1.s_timestamps, dat1.s_dvv, "linear", bounds_error=False, fill_value=0)
+    dfsub["dvv"] = f(dfsub.timestamps.values)
+    g = interp1d(dat1.s_timestamps, dat1.s_err, "linear", bounds_error=False, fill_value=0)
+    dfsub["error"] = g(dfsub.timestamps.values)
+    h = interp1d(dat1.s_timestamps, dat1.s_cc_after, "linear", bounds_error=False, fill_value=0)
+    dfsub["cc_after"] = h(dfsub.timestamps.values)
+    # print("max dvv ", df["dvv"].max())
+    # print("max error after Weaver ", df["error"].max())
+    # print("min abs error after Weaver ", np.abs(df["error"]).min())
+    dfsub["dvv"] /= 100.0  # convert from %
+    dfsub["error"] /= 100.0  # convert from %
+    rain_m = dfsub["rain"].values / 1000.0
+    rain_m -= rain_m.mean()
+    temp_C = dfsub["Temp_C"].values
+    dvv_obs = dfsub.dvv.values
+    dvv_obs -= dvv_obs.mean()
+    data_array.append(dvv_obs)
+    sigma_array.append(dfsub.error.values)
+    if len(data_array) == 1:
+        data_array = np.array(data_array, ndmin=2)
+        sigma_array = np.array(sigma_array, ndmin=2)
+        sigma_array[sigma_array == 0.0] = 1.e-6
+
+        t = dfsub.timestamps.values
+        return t, data_array, sigma_array, rain_m, temp_C, True
+    else:
+        return [], [], [], [], [], False
 
 def kernels_map(sta):
     # map for kernels: some stations have the same type of site
@@ -83,6 +151,7 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
     df = pd.DataFrame(columns=df_w.keys())
     df.timestamps = np.arange(np.nanmin(df_w.timestamps.values), np.nanmax(df_w.timestamps.values), int(time_resolution))
     # print("Old and new nr. timestamps: {}, {}".format(len(df_w), len(df)))
+    print("MEAN RAIN: ", df_w.rain.mean())
     rain_avg = np.zeros(len(df))
     temp_avg = np.zeros(len(df))
     for ixt, timestamp in enumerate(df.timestamps.values):
@@ -96,6 +165,7 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
                                       (df_w.timestamps < timestamp + time_resolution)].Temp_C.mean())
     df["rain"] = rain_avg
     df["Temp_C"] = temp_avg
+    print("MEAN RAIN adjusted: ", df.rain.mean())
 
     #plt.plot(df.timestamps, df.rain, "slateblue")
     #plt.plot(df.timestamps, df.Temp_C, "firebrick")

@@ -1,0 +1,170 @@
+# ============================================================
+# input for post processing the dv/v results from cdmx
+# ============================================================
+# inversion type: nonlinear_lsq or mcmc
+inversion_type: "mcmc" #"mcmc"
+# directories: input (where csv files of dv/v are),
+# meteorology data, kernels, output
+input_dir: "measurements/msr_rsvm/"
+meteo_data_dir: "meteo_cdmx/"
+kernel_dir: "kernels/"
+output_dir: "models/output_m2_test_withg"
+
+# parameters regarding the model
+# -----------------------------
+
+model: "model2"
+list_params:
+- waterlevel_p
+- drop_eq
+- recov_eq
+- slope
+- const
+- shift
+- scale
+# time resolution for meteo data averaging (original data has 
+# hourly sampling, and this is unnecessarily high for running the inversion)
+time_resolution: 864000.0
+# depths to consider for fitting rain in m. nz controls how many depth steps
+# depth resolution
+z0: 0.0
+z1: 500.0
+nz: 501 #201
+# type of waves (For Rayleigh, specify psv and for love sh)
+wavepol: "psv"
+# which mode to assume (0, 1, 2)
+mode_nr: 0
+# trial values for hydraulic diffusivity in m^2/s
+tdiffs:
+- 1.0 # sand
+#- 1.0e-4  # clay
+#- 1.0e-1 # another sand
+#- 1.0e-2 # another sand
+#- 1.0e-2 # another sand
+#- 1.0e-8 # clay
+# - 1.0e-5 # another clay 
+#- 5.e-6  # another clay
+roeloffs_method: "both"  # d for drained, ud for undrained, both for both
+
+
+# parameters regarding the data
+# -----------------------------
+
+# time: from when to when
+# format YYYY,jjj or YYYY-mm-dd
+t0: "2017-06-01"
+t1: "2021-06-01"
+# which channelpairs to use?
+channelpairs:
+-  - "HLZ"
+   - "HLN"
+# -  - "HLN"
+#    - "HLE"
+# -  - "HLZ"
+#    - "HLE"
+# -  - "HLE"
+#    - "HLE"
+# -  - "HLZ"
+#    - "HLZ"
+# -  - "HLN"
+#    - "HLN"
+
+# references stack beginning dates can be in format
+# YYYY,jjj or YYYY-mm-dd
+references:
+- "2018,001"
+- "2019,001"
+- "2020,001"
+#
+# which frequencies to consider?
+f_mins:
+#- 0.25
+#- 0.5
+- 1.0
+- 2.0
+- 4.0
+# minimum quality (by CC to reference after stretch)
+min_quality: 0.5
+# clusters to use
+clusters:
+    - 3
+# station list
+stations:
+#-  "cdmx_unm"
+- "cdmx_bjvm"
+- "cdmx_covm"
+- "cdmx_vrvm"
+# - "cdmx_ctvm"
+# - "cdmx_aovm"
+# - "cdmx_cjvm"
+# - "cdmx_ctvm"
+
+# - "cdmx_mhvm"
+# - "cdmx_thvm"
+# - "cdmx_tlvm"
+# - "cdmx_xcvm"
+# station for meteorologic data. ENP7 is longest running, few gaps, city center
+metstation: "CCA"
+# smooth temperature
+smoothing_temperature_n_samples: 3
+
+# parameters regarding the inversion
+# ------------------------------
+
+# inversion: Bounds (lower and upper bound of uniform prior)
+use_bounds: true
+bounds_waterlevel_p:
+- 1.0e-8
+- 1.0e+8
+bounds_recov_eq: # bounds for log recovery rate
+# natural logarithm reaches 10 between 10^4 and 10^5, which is on the order of the seconds in a day.
+# Therefore, to have a 1 % recovery in the first day, you would choose a recov_eq of 10^-3
+- 0.0
+- 0.01
+bounds_drop_eq: # dv/v drop, no unit (0.01 is 1% drop)
+- 0
+- 0.3
+bounds_slope:  # dv/v slope in second^-1 (0.01 is 1% slope per second)
+- -5.0e-8
+- 5.0e-8
+bounds_const:  # constant offset for linear trend
+- -0.1
+- 0.1
+bounds_shift:
+- 0.0
+- 7.5e+6  # a bit under 90 days.
+bounds_scale:
+- 0.0  
+- 1.0e-2  # 10 degree peak-to-peak temperature change would cause 10% velocity change
+bounds_logf:
+- -10
+- 1
+bounds_g:
+- 1.0
+- 10.0
+# use an estimated additive error under the assumption that the actual observational error was underestimated
+use_logf: false
+# use an estimated multiplicative error under the assumption that the actual observational error was underestimated
+use_g: true
+
+# plotting
+do_plots: false
+
+# stuff for MCMC
+n_iterations: 20000
+n_initializations: 21
+n_burnin: 10000
+max_iterations: 100000
+
+init_perturbation:
+- 1.e-3 # log 10 p0
+- 1.e-5 # drop
+- 1.e-5 # recovery
+- 1.e-5 # slope / year
+- 1.e-5 # constant offset
+- 1.e-3 # shift months
+- 1.e-5 # scale
+- 1.e-3 # log 10 f or g
+
+# how many threads
+n_multiprocess: 4
