@@ -45,6 +45,13 @@ tdiffs:
 # - 1.0e-5 # another clay 
 #- 5.e-6  # another clay
 roeloffs_method: "both"  # d for drained, ud for undrained, both for both
+# suppress the shallow sensitivity? This mostly matters for models m1a.py and m2a.py, which
+# consider the diffusion of rain into the subsurface, and introduce a delay between rain and dv
+# if shallow sensitivity is ignored
+# This option has NO effect on model 4
+suppress_shallow_sensitivity: false
+# from how many meters down should we start considering seismic wave sensitivity
+depth_to_sens: 5.0
 
 
 # parameters regarding the data
