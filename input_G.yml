@@ -102,7 +102,7 @@ smoothing_temperature_n_samples: 3
 # inversion: Bounds (lower and upper bound of uniform prior)
 bounds_waterlevel_p:
 - 1.e-8
--1.e+8
+- 1.e+8
 bounds_recov_eq: # dv/v recovery, no unit (0.01 is 1% recovery per time interval)
 - 0.0
 - 0.1
@@ -128,7 +128,7 @@ bounds_g:
 - 1.0
 - 10.0
 # plotting
-do_plots: True
+do_plots: true
 # use an estimated additive error under the assumption that the actual observational error was underestimated
 use_logf: false
 # use an estimated multiplicative error under the assumption that the actual observational error was underestimated
