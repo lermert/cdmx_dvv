@@ -129,6 +129,10 @@ bounds_g:
 - 10.0
 # plotting
 do_plots: True
+# use an estimated additive error under the assumption that the actual observational error was underestimated
+use_logf: false
+# use an estimated multiplicative error under the assumption that the actual observational error was underestimated
+use_g: true
 
 # stuff for MCMC
 n_iterations: 20000

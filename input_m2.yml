@@ -135,8 +135,8 @@ bounds_slope:  # dv/v slope in second^-1 (0.01 is 1% slope per second)
 - -5.0e-8
 - 5.0e-8
 bounds_const:  # constant offset for linear trend
-- -0.1
-- 0.1
+- -0.2
+- 0.2
 bounds_shift:
 - 0.0
 - 7.5e+6  # a bit under 90 days.

@@ -171,10 +171,12 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
     ll = 0.0
 
 # get the synthetics for these parameters
-    if error_is_underestimated_logf or error_is_underestimated_g:
+    if error_is_underestimated_g:
         mparams = params[:-1]
-        #log_f = params[-1]
         g = params[-1]
+    elif error_is_underestimated_logf:
+        mparams = params[:-1]
+        log_f = params[-1]        
     else:
         mparams = params
 
