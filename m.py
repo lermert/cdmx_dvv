@@ -157,9 +157,12 @@ for ixsta, sta in enumerate(config["stas"]):
                             iterations_performed = 0
                             while True:
 
-                                position = sampler.run_mcmc(position, config["n_iterations"], progress=True)
-                                iterations_performed += config["n_iterations"]
-
+                                try:
+                                    position = sampler.run_mcmc(position, config["n_iterations"], progress=True)
+                                    iterations_performed += config["n_iterations"]
+                                except ValueError:  # badly conditioned starting point
+                                    position += np.random.randn(config["n_initializations"], len(init_pos)) *\
+                                                    np.array(config["init_perturbation"][0: len(init_pos)])
                                 try:
                                     tau = sampler.get_autocorr_time(discard=config["n_burnin"])
                                     foname = (config["output_dir"] + "/tau_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps.npy".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in))

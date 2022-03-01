@@ -8,7 +8,7 @@ inversion_type: "mcmc" #"mcmc"
 input_dir: "measurements/msr_rsvm/"
 meteo_data_dir: "meteo_cdmx/"
 kernel_dir: "kernels/"
-output_dir: "models/output_m2_test_withg"
+output_dir: "models/output_m2_test2_nologf"
 
 # parameters regarding the model
 # -----------------------------
@@ -147,12 +147,12 @@ bounds_logf:
 - -10
 - 1
 bounds_g:
-- 1.0
+- 0.95
 - 10.0
 # use an estimated additive error under the assumption that the actual observational error was underestimated
 use_logf: false
 # use an estimated multiplicative error under the assumption that the actual observational error was underestimated
-use_g: true
+use_g: false
 
 # plotting
 do_plots: false

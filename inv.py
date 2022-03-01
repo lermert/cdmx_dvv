@@ -94,7 +94,7 @@ def evaluate_model3(ind_vars, params):
     dv_lin = func_lin([t], [slope, const])
     dv_temp = func_temp1([t, temperature, nsm_samples], [shift, scale])
 
-    return(dv_rain + dv_temp + dv_quake + dv_lin)
+    return(dv_rain + dv_temp + dv_lin)
 
 def set_bounds(config):
     lower_bounds = []
@@ -196,7 +196,7 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
         if error_is_underestimated_g:
             sigma2 = (g * data_err[ixd]) ** 2
         elif error_is_underestimated_logf:
-            sigma2 = data_err[ixd] ** 2 + np.exp(2 * log_f)
+            sigma2 = (data_err[ixd] + np.exp(log_f)) ** 2 #+ np.exp(2 * log_f)
         else:
             sigma2 = data_err[ixd] ** 2
 
