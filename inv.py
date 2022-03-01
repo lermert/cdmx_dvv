@@ -182,6 +182,8 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
 
     if fmodel == 'model1':
         synth = evaluate_model1(ind_vars, mparams)
+    elif fmodel == "model3":
+        synth = evaluate_model3(ind_vars, mparams)
     elif fmodel == "model2":
         synth = evaluate_model2(ind_vars, mparams)
     elif fmodel == "model4":
