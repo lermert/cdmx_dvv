@@ -194,7 +194,7 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
 
     for ixd, d in enumerate(data):
         if error_is_underestimated_g:
-            sigma2 = data_err[ixd] ** 2 * 2. * g 
+            sigma2 = (g * data_err[ixd]) ** 2
         elif error_is_underestimated_logf:
             sigma2 = data_err[ixd] ** 2 + np.exp(2 * log_f)
         else:
