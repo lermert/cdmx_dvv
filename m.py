@@ -170,6 +170,7 @@ for ixsta, sta in enumerate(config["stas"]):
                                     position = sampler.run_mcmc(position, config["n_iterations"], progress=True)
                                     iterations_performed += config["n_iterations"]
                                 except ValueError:  # badly conditioned starting point
+                                    position = sampler.get_last_sample()
                                     position += np.random.randn(config["n_initializations"], len(init_pos)) *\
                                                     np.array(config["init_perturbation"][0: len(init_pos)])
                                 try:
