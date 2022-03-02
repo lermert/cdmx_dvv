@@ -151,7 +151,7 @@ def get_initial_position_from_mlmodel(params_mod, config):
         elif p == "shift":
             init_pos[i] /= (30. * 86400.)
     if config["use_logf"]:
-        init_pos = np.concatenate((init_pos, np.array([-2]))) # append log f
+        init_pos = np.concatenate((init_pos, np.array([config["bounds_logf"][1] - 1]))) # append log f
     if config["use_g"]:
         init_pos = np.concatenate((init_pos, np.array([1.01]))) # append g
     print("Initial position is around ", init_pos)
