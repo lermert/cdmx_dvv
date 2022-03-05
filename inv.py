@@ -1,6 +1,6 @@
 import numpy as np
 from math import sqrt, pi
-from model_tools import func_rain, func_quake, func_healing, func_temp1, func_lin, func_pseudo_SSW
+from model_tools import func_rain, func_quake, func_healing, func_temp1, func_lin, func_pseudo_SSW, func_rain1
 
 def evaluate_model1(ind_vars, params):
     t = ind_vars[0]
@@ -26,6 +26,53 @@ def evaluate_model1(ind_vars, params):
     #print(dv_rain.max(), dv_temp.max(), dv_quake.max(), dv_lin.max())
     #print(dv_rain.mean(), dv_temp.mean(), dv_quake.mean(), dv_lin.mean())
     return(dv_rain + dv_temp + dv_quake + dv_lin)
+
+def evaluate_model5(ind_vars, params):
+    t = ind_vars[0]
+    z = ind_vars[1]
+    kernel_vs = ind_vars[2]
+    rho = ind_vars[3]
+    dp_rain = ind_vars[4]
+    temperature = ind_vars[5]
+    pressure = ind_vars[6]
+    nsm_samples = ind_vars[7]
+
+    fac = params[0]
+    tau_max = 10. ** params[1]
+    drop = params[2]
+    slope = params[3] / (365. * 86400)
+    const = params[4]
+    shift = params[5] * 30.0 * 86400.0 - ind_vars[7] / 2.0
+    scale = params[6]
+
+    dv_rain = func_rain1([z, dp_rain, rho, kernel_vs, pressure], [fac])
+    dv_temp = func_temp1([t, temperature, nsm_samples], [shift, scale])
+    dv_quake = func_healing([t], [tau_max, drop])
+    dv_lin = func_lin([t], [slope, const])
+
+    return(dv_rain + dv_temp + dv_quake + dv_lin)
+
+def evaluate_model6(ind_vars, params):
+    t = ind_vars[0]
+    z = ind_vars[1]
+    kernel_vs = ind_vars[2]
+    rho = ind_vars[3]
+    dp_rain = ind_vars[4]
+    temperature = ind_vars[5]
+    pressure = ind_vars[6]
+    nsm_samples = ind_vars[7]
+
+    fac = params[0]
+    tau_max = 10. ** params[1]
+    drop = params[2]
+    shift = params[3] * 30.0 * 86400.0 - ind_vars[5] / 2.0
+    scale = params[4]
+
+    dv_rain = func_rain1([z, dp_rain, rho, kernel_vs, pressure], [fac])
+    dv_temp = func_temp1([t, temperature, nsm_samples], [shift, scale])
+    dv_quake = func_healing([t], [tau_max, drop])
+    return(dv_rain + dv_temp + dv_quake)
+
 
 def evaluate_model4(ind_vars, params):
     t = ind_vars[0]
@@ -188,6 +235,10 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
         synth = evaluate_model2(ind_vars, mparams)
     elif fmodel == "model4":
         synth = evaluate_model4(ind_vars, mparams)
+    elif fmodel == "model5":
+        synth = evaluate_model5(ind_vars, mparams)
+    elif fmodel == "model6":
+        synth = evaluate_model6(ind_vars, mparams)
 
     # data could be several dimensions
     if np.ndim(data) == 1:
@@ -201,7 +252,6 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
             sigma2 = (data_err[ixd] + np.exp(log_f)) ** 2 #+ np.exp(2 * log_f)
         else:
             sigma2 = data_err[ixd] ** 2
-
         res = synth - d
         # log_f parameter is used to account for possible underestimate of observational uncertainty.
         # uncertainty (data_err) is otherwise based on Weaver et al

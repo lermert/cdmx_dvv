@@ -39,8 +39,14 @@ def model_SW_dsdp(p_in, waterlevel=100.):
     # p_in (array of int or float): effective pressure (hydrostatic - pore)
     # waterlevel: to avoid 0 division at the free surface. Note that results are sensitive to this parameter.
     # output: 1/vs del vs / del p
+    #try:
     p_in += waterlevel
     sens = 1. / (6. * p_in)
+    # except ValueError:
+    #     p_in = np.tile(p_in, len(waterlevel)).reshape(len(waterlevel), len(p_in))
+    #     p_in += np.tile(waterlevel, p_in.shape[1]).reshape(p_in.shape[1], len(waterlevel)).T
+    #     sens = 1. / (6. * p_in)
+
     return(sens)
 
 def roeloffs_1depth(t, rain, r, B_skemp, nu, diff,
@@ -124,6 +130,27 @@ def func_rain(independent_vars, params):
     dv_rain = np.dot(-dp_rain, stress_sensitivity * kernel * dz)
 
     return(dv_rain)
+
+def func_rain1(independent_vars, params):
+    # This function does the bookkeeping for predicting dv/v from pore pressure change.
+    z = independent_vars[0]
+    dp_rain = independent_vars[1]
+    rhos = independent_vars[2]
+    kernel = independent_vars[3]
+    pressure = independent_vars[4]
+    dz = z[1] - z[0]
+
+    fac = params[0]
+
+    p = np.zeros(len(z))
+    p[1: ] = np.cumsum(rhos * 9.81 * dz)[:-1]  # overburden / hydrostatic pressure
+
+    dv_rain = np.zeros(len(dp_rain))
+    for i in range(len(dp_rain)):
+        stress_sensitivity = model_SW_dsdp(p, pressure[i])
+        dv_rain[i] = np.dot(-dp_rain[i], (stress_sensitivity * kernel * dz))
+
+    return(fac * dv_rain)
 
 #################################################
 # Hydrology: scaled inferred ground water level

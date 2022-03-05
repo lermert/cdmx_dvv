@@ -4,9 +4,11 @@ import numpy as np
 import emcee
 import matplotlib.pyplot as plt
 from scipy import optimize
-from model_tools import parse_input, func_sciopt, get_sens_kernel, get_rho_nu, get_rainload_p, func_lin, func_quake, func_healing, func_rain, func_temp1, func_pseudo_SSW
-from inv import set_bounds, get_mcmc_bounds, get_initial_position_from_mlmodel, log_probability_for_emcee, evaluate_model2, evaluate_model1, evaluate_model4, evaluate_model3
-from data_preparation import get_met_data, kernels_map, prep_data
+from model_tools import parse_input, func_sciopt, get_sens_kernel, get_rho_nu, get_rainload_p, func_rain1, \
+func_lin, func_quake, func_healing, func_rain, func_temp1, func_pseudo_SSW
+from inv import set_bounds, get_mcmc_bounds, get_initial_position_from_mlmodel, evaluate_model6, \
+log_probability_for_emcee, evaluate_model2, evaluate_model1, evaluate_model4, evaluate_model3, evaluate_model5
+from data_preparation import get_met_data, kernels_map, prep_data, sta_to_metsta
 import os
 import sys
 from multiprocessing import Pool
@@ -29,14 +31,17 @@ if not os.path.exists(config["output_dir"]):
 os.system("cp {} {}".format(sys.argv[1], config["output_dir"]))
 output_filename = "model_{}.csv".format(config["inversion_type"])
 
-# load meteo data
-df = get_met_data(config["metstation"], config["meteo_data_dir"],
-                  config["time_resolution"], do_plots=config["do_plots"])
-df = df[df.timestamps < config["t1"]]
-df = df[df.timestamps >= config["t0"]]
 
 # loop over stations
 for ixsta, sta in enumerate(config["stas"]):
+
+    metsta = sta_to_metsta(sta)
+    # load meteo data
+    df = get_met_data(metsta, config["meteo_data_dir"],
+                      config["time_resolution"], do_plots=config["do_plots"])
+    df = df[df.timestamps < config["t1"]]
+    df = df[df.timestamps >= config["t0"]]
+
     
     # loop over clusters
     for cluster in config["clusters"]:
@@ -57,7 +62,7 @@ for ixsta, sta in enumerate(config["stas"]):
                     print(sta, channel1, channel2, cluster, f_min, twin_min)
 
 
-                    t, data_array, sigma_array, rain_m, temp_C, success = \
+                    t, data_array, sigma_array, rain_m, temp_C, pressure_Pa, success = \
                         prep_data(df, channel1, channel2, config, f_min, f_max, twin_min, twin_max, sta)
                     if not success:
                         continue
@@ -108,6 +113,20 @@ for ixsta, sta in enumerate(config["stas"]):
                                        list_vars=[[t, rain_m], [t], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
                                        list_params=[[phi, a], [tau_max, drop_eq], [slope, const], [shift, scale]],
                                        n_channels=1)
+                        elif config["model"] == "model5":
+                            model_to_fit = lambda t, factor_pp, tau_max, drop_eq, slope, const, shift, scale:\
+                                       func_sciopt(t,
+                                       list_models=[func_rain1, func_healing, func_lin, func_temp1],
+                                       list_vars=[[config["z"], dp_rain, rhos, K_vs, pressure_Pa], [t], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
+                                       list_params=[[factor_pp], [tau_max, drop_eq], [slope, const], [shift, scale]],
+                                       n_channels=1)
+                        elif config["model"] == "model6":
+                            model_to_fit = lambda t, factor_pp, tau_max, drop_eq, shift, scale:\
+                                       func_sciopt(t,
+                                       list_models=[func_rain1, func_healing, func_temp1],
+                                       list_vars=[[config["z"], dp_rain, rhos, K_vs, pressure_Pa], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
+                                       list_params=[[factor_pp], [tau_max, drop_eq], [shift, scale]],
+                                       n_channels=1)
                         else:
                             raise ValueError("Unknown model {} in config.".format(config["model"]))
 
@@ -142,6 +161,11 @@ for ixsta, sta in enumerate(config["stas"]):
                             indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"]]
                         elif config["model"] == "model4":
                             indep_vars_emcee = [t, rain_m, temp_C, config["smoothing_temperature_n_samples"]]
+                        elif config["model"] == "model5":
+                            indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, pressure_Pa, config["smoothing_temperature_n_samples"], config["time_resolution"]]
+                        elif config["model"] == "model6":
+                            indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, pressure_Pa, config["smoothing_temperature_n_samples"], config["time_resolution"]]
+
 
                         # get the bounds
                         emcee_bounds = get_mcmc_bounds(config)
@@ -271,6 +295,11 @@ for ixsta, sta in enumerate(config["stas"]):
                             dvv_mcmc = evaluate_model3(indep_vars_emcee, maxprob_sample)
                         elif config["model"] == "model4":
                             dvv_mcmc = evaluate_model4(indep_vars_emcee, maxprob_sample)
+                        elif config["model"] == "model5":
+                            dvv_mcmc = evaluate_model5(indep_vars_emcee, maxprob_sample)
+                        elif config["model"] == "model6":
+                            dvv_mcmc = evaluate_model6(indep_vars_emcee, maxprob_sample)
+
 
 
                         fig = plt.figure()

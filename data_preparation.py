@@ -62,6 +62,7 @@ def prep_data(df, channel1, channel2, config, f_min, f_max, twin_min, twin_max, 
     dfsub["error"] /= 100.0  # convert from %
     rain_m = dfsub["rain"].values / 1000.0
     rain_m -= rain_m.mean()
+    pressure_Pa = dfsub["pressure"].values
     temp_C = dfsub["Temp_C"].values
     dvv_obs = dfsub.dvv.values
     dvv_obs -= dvv_obs.mean()
@@ -73,9 +74,36 @@ def prep_data(df, channel1, channel2, config, f_min, f_max, twin_min, twin_max, 
         sigma_array[sigma_array == 0.0] = 1.e-6
 
         t = dfsub.timestamps.values
-        return t, data_array, sigma_array, rain_m, temp_C, True
+        return t, data_array, sigma_array, rain_m, temp_C, pressure_Pa, True
     else:
         return [], [], [], [], [], False
+
+
+def sta_to_metsta(sta):
+    metstations = {"unm": "CCHS",
+                   "UNM": "CCHS",
+                   "cdmx_icvm": "ENP2",
+                   "cdmx_aovm": "ENP6",
+                   "cdmx_apvm": "CCHA",
+                   "cdmx_bjvm": "ENP6",
+                   "cdmx_cjvm": "CCHS",
+                   "cdmx_covm": "ENP6",
+                   "cdmx_ctvm": "ENP7",
+                   "cdmx_gmvm": "ENP7",
+                   "cdmx_mcvm": "CCHS",
+                   "cdmx_mhvm": "ENP4",
+                   "cdmx_mpvm": "ENP3",
+                   "cdmx_thvm": "ENP1",
+                   "cdmx_tlvm": "ENP3",
+                   "cdmx_vrvm": "ENP7",
+                   "cdmx_xcvm": "ENP1",
+                   "MULU": "ENP7",
+                   "MIXC": "ENP6",
+                   "CIRE": "ENP6",
+                   "ESTA": "ENP9",
+                   "TEPE": "ENP1"}
+    return(metstations[sta])
+
 
 def kernels_map(sta):
     # map for kernels: some stations have the same type of site
@@ -93,7 +121,7 @@ def kernels_map(sta):
                    "covm": "covm",
                    "ctvm": "ctvm",
                    "gmvm": "ipvm",
-                   "mvcm": "ipvm",
+                   "mcvm": "ipvm",
                    "mhvm": "unm",
                    "mpvm": "ipvm",
                    "mzvm": "ipvm",
@@ -138,13 +166,18 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
         except (ValueError, TypeError):
             datetimes.append(np.nan)
     df_w["timestamps"] = datetimes
-    #df_w = df_w.dropna(subset=["timestamps", "Precipitacion_mm"]).reset_index()
-    df_w["rain"] = df_w["Precipitacion_mm"].apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
-    df_w["Temp_C"] = df_w["Temp_C"].apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
+    # df_w = df_w.dropna(subset=["timestamps", "Precipitacion_mm"]).reset_index()
+    df_w["rain"] = df_w["Precipitacion_mm"]  #.apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
+    df_w["Temp_C"] = df_w["Temp_C"]  #df_w  .apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
+    df_w["pressure"] = df_w["Presion_bar_hPa"]  #.apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
     df_w["rain"] = np.nan_to_num(df_w.rain.values)
-    
-    meantemp = df_w.Temp_C.mean()
+
+    meantemp = np.nanmean(df_w.Temp_C.values)
     df_w["Temp_C"] = np.nan_to_num(df_w.Temp_C.values, nan=meantemp)
+    meanpres = np.nanmean(df_w.pressure)
+    df_w["pressure"] = np.nan_to_num(df_w.pressure.values, nan=meanpres)
+    print(df_w.pressure.max(), df_w.pressure.min())
+
     # print("rain mean", df_w.rain.mean())
     # print("Temp mean", df_w.Temp_C.mean())
     # set up a new dataframe with a lower time resolution
@@ -154,6 +187,7 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
     print("MEAN RAIN: ", df_w.rain.mean())
     rain_avg = np.zeros(len(df))
     temp_avg = np.zeros(len(df))
+    pres_avg = np.zeros(len(df))
     for ixt, timestamp in enumerate(df.timestamps.values):
         # rain_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
         #                               (df_w.timestamps < timestamp + 0.5 * time_resolution)].rain.mean())
@@ -163,8 +197,12 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
                                       (df_w.timestamps < timestamp + time_resolution)].rain.mean())
         temp_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - time_resolution) &
                                       (df_w.timestamps < timestamp + time_resolution)].Temp_C.mean())
+        pres_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - time_resolution) &
+                                      (df_w.timestamps < timestamp + time_resolution)].pressure.mean())
     df["rain"] = rain_avg
     df["Temp_C"] = temp_avg
+    df["pressure"] = pres_avg * 100.0  # convert from hectopascal to Pascal
+    print(df.pressure.mean())
     print("MEAN RAIN adjusted: ", df.rain.mean())
 
     #plt.plot(df.timestamps, df.rain, "slateblue")
@@ -173,7 +211,7 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
 
     if do_plots:
         plt.figure(figsize=(12, 3))
-        plt.plot(df.timestamps, df.Precipitacion_mm)
+        plt.plot(df.timestamps, df.rain)
         tickstrs = []
         yrs = []
         newticks = []
@@ -187,6 +225,23 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
         plt.title("Precipitacion at station {}".format(sta))
         plt.tight_layout()
         plt.savefig("rain_{}.png".format(sta))
+        plt.close()
+
+        plt.figure(figsize=(12, 3))
+        plt.plot(df.timestamps, df.pressure)
+        tickstrs = []
+        yrs = []
+        newticks = []
+        for ttstamp in df.timestamps:
+            if UTCDateTime(ttstamp).strftime("%Y") not in yrs:
+                tickstrs.append(UTCDateTime(ttstamp).strftime("%Y/%m"))
+                newticks.append(ttstamp)
+                yrs.append(UTCDateTime(ttstamp).strftime("%Y"))
+        a, _ = plt.xticks(newticks, tickstrs, rotation=90)
+        plt.ylabel("Pressure (Pa)")
+        plt.title("Atm. pressure at station {}".format(sta))
+        plt.tight_layout()
+        plt.savefig("atmpres_{}.png".format(sta))
         plt.close()
 
     return(df)
