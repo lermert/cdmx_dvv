@@ -53,8 +53,13 @@ for ixsta, sta in enumerate(config["stas"]):
                 channel1 = cp[0]
                 channel2 = cp[1]
                 f_max = 2. * f_min
-                twins_min = [-20. / f_min, -10. / f_min, 1. / f_min * 4., 1. / f_min * 8.]
-                twins_max = [-8. / f_min, -4. / f_min, 10. / f_min, 20. / f_min]
+
+                if channel1 == channel2:
+                    twins_min = [1. / f_min * 4., 1. / f_min * 8.]
+                    twins_max = [10. / f_min, 20. / f_min]
+                else:
+                    twins_min = [-20. / f_min, -10. / f_min, 1. / f_min * 4., 1. / f_min * 8.]
+                    twins_max = [-8. / f_min, -4. / f_min, 10. / f_min, 20. / f_min]
 
                 for ixtw, twin_min in enumerate(twins_min):
                     twin_max = twins_max[ixtw]
