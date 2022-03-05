@@ -24,7 +24,7 @@ def prep_data(df, channel1, channel2, config, f_min, f_max, twin_min, twin_max, 
         dvv_df_or.dropna(inplace=True)
     except:
         print("could not read {}".format(f_to_read))
-        return [], [], [], [], [], False
+        return [], [], [], [], [], [], False
 
     # #### Read and stitch the seismic data (dv/v)
     # selection by quality, frequency range, time window, etc
@@ -38,7 +38,7 @@ def prep_data(df, channel1, channel2, config, f_min, f_max, twin_min, twin_max, 
     dat1.s_dvv -= dat1.s_dvv.mean()
     if len(dat1) < 10:
         print("Insufficient number of data points with quality > {}".format(config["min_quality"]))
-        return [], [], [], [], [], False
+        return [], [], [], [], [], [], False
 
     if t0_data == -1:
         t0_data = dat1.s_timestamps.min()
@@ -76,7 +76,7 @@ def prep_data(df, channel1, channel2, config, f_min, f_max, twin_min, twin_max, 
         t = dfsub.timestamps.values
         return t, data_array, sigma_array, rain_m, temp_C, pressure_Pa, True
     else:
-        return [], [], [], [], [], False
+        return [], [], [], [], [], [], False
 
 
 def sta_to_metsta(sta):
@@ -96,7 +96,7 @@ def sta_to_metsta(sta):
                    "thvm": "ENP1",
                    "tlvm": "ENP3",
                    "vrvm": "ENP7",
-                   "cdmx_xcvm": "ENP1",
+                   "xcvm": "ENP1",
                    "MULU": "ENP7",
                    "MIXC": "ENP6",
                    "CIRE": "ENP6",
