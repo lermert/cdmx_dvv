@@ -158,11 +158,7 @@ for ixsta, sta in enumerate(config["stas"]):
 
 
                         # set up the emcee sampler
-                        if config["model"] == "model1":
-                            indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"]]
-                        elif config["model"] == "model2":
-                            indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"]]
-                        elif config["model"] == "model3":
+                        if config["model"] in ["model1", "model2", "model3"]:
                             indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"]]
                         elif config["model"] == "model4":
                             indep_vars_emcee = [t, rain_m, temp_C, config["smoothing_temperature_n_samples"]]

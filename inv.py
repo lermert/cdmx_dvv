@@ -16,7 +16,7 @@ def evaluate_model1(ind_vars, params):
     drop = params[2]
     slope = params[3] / (365. * 86400)
     const = params[4]
-    shift = params[5] * 30.0 * 86400.0
+    shift = params[5] * 30.0 * 86400.0 - ind_vars[7] / 2.0
     scale = params[6]
 
     dv_rain = func_rain([z, dp_rain, rho, kernel_vs], [p0])

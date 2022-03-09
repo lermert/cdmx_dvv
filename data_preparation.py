@@ -166,11 +166,13 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
         except (ValueError, TypeError):
             datetimes.append(np.nan)
     df_w["timestamps"] = datetimes
-    # df_w = df_w.dropna(subset=["timestamps", "Precipitacion_mm"]).reset_index()
-    df_w["rain"] = df_w["Precipitacion_mm"]  #.apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
-    df_w["Temp_C"] = df_w["Temp_C"]  #df_w  .apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
-    df_w["pressure"] = df_w["Presion_bar_hPa"]  #.apply(lambda x: re.sub(".0", "0", str(x))).astype(float)
+    df_w["rain"] = df_w["Precipitacion_mm"]
+    df_w["Temp_C"] = df_w["Temp_C"]
+    df_w["pressure"] = df_w["Presion_bar_hPa"]
     df_w["rain"] = np.nan_to_num(df_w.rain.values)
+    print(type(df_w.rain.values))
+    print(type(df_w.Temp_C.values))
+    print([type(drain) for drain in df_w.rain.values if type(drain) != np.float64])
 
     meantemp = np.nanmean(df_w.Temp_C.values)
     df_w["Temp_C"] = np.nan_to_num(df_w.Temp_C.values, nan=meantemp)
@@ -202,6 +204,9 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
     df["rain"] = rain_avg
     df["Temp_C"] = temp_avg
     df["pressure"] = pres_avg * 100.0  # convert from hectopascal to Pascal
+    df[df.pressure < 10000.0] = np.mean(df.pressure.values)
+    df = df[df.timestamps>UTCDateTime("1990,001").timestamp].copy()
+
     print(df.pressure.mean())
     print("MEAN RAIN adjusted: ", df.rain.mean())
 
