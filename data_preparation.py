@@ -179,7 +179,6 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
     meanpres = np.nanmean(df_w.pressure)
     df_w["pressure"] = np.nan_to_num(df_w.pressure.values, nan=meanpres)
     print(df_w.pressure.max(), df_w.pressure.min())
-
     # print("rain mean", df_w.rain.mean())
     # print("Temp mean", df_w.Temp_C.mean())
     # set up a new dataframe with a lower time resolution
@@ -206,10 +205,6 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
     df["pressure"] = pres_avg * 100.0  # convert from hectopascal to Pascal
     df[df.pressure < 10000.0] = np.mean(df.pressure.values)
     df = df[df.timestamps>UTCDateTime("1990,001").timestamp].copy()
-
-    print(df.pressure.mean())
-    print("MEAN RAIN adjusted: ", df.rain.mean())
-
     #plt.plot(df.timestamps, df.rain, "slateblue")
     #plt.plot(df.timestamps, df.Temp_C, "firebrick")
     #plt.show()
