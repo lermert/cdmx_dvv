@@ -209,8 +209,10 @@ def func_healing(independent_vars, params, time_quake="2017,09,19,18,14,00"):
     # but faster
     # (c) by Kurama Okubo
     t = independent_vars[0]
+    if len(independent_vars) == 2:
+        time_quake = independent_vars[1]
 
-    t_low = np.linspace(t.min(), t.max(), 100)
+    t_low = t.copy()  #np.linspace(t.min(), t.max(), 100)
     tau_min = 0.1
     tau_max = params[0]
     drop_eq = params[1]
@@ -227,11 +229,22 @@ def func_healing(independent_vars, params, time_quake="2017,09,19,18,14,00"):
     dv_quake_low[ixt] = [logheal_llc(tt, tau_min, tau_max, drop_eq) for tt in tax[ixt]]
     dv_quake_low /= np.log(tau_max/tau_min)
     # reinterpolate
-    f = interp1d(t_low, dv_quake_low, bounds_error=False)
-    dv_quake = f(t)
+    #f = interp1d(t_low, dv_quake_low, bounds_error=False)
+    dv_quake = dv_quake_low  #f(t)
     return(dv_quake)
 
 
+def func_healing_list(independent_vars, params):
+    t = independent_vars[0]
+    quakes = independent_vars[1]
+
+    dv_quakes = np.zeros(len(t))
+    tau_max_list = params[0]
+    drop_eq_list = params[1]
+
+    for i in range(len(quakes)):
+        dv_quakes += func_healing([t], [tau_max_list[i], drop_eq_list[i]], time_quake=quakes[i])
+    return(dv_quakes)
 
 #################################################
 # Thermoelastic effect following Richter et al., 2015

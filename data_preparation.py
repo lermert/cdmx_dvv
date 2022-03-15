@@ -64,6 +64,7 @@ def prep_data(df, channel1, channel2, config, f_min, f_max, twin_min, twin_max, 
     rain_m -= rain_m.mean()
     pressure_Pa = dfsub["pressure"].values
     temp_C = dfsub["Temp_C"].values
+    temp_C -= temp_C.mean()
     dvv_obs = dfsub.dvv.values
     dvv_obs -= dvv_obs.mean()
     data_array.append(dvv_obs)

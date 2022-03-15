@@ -2,6 +2,36 @@ import numpy as np
 from math import sqrt, pi
 from model_tools import func_rain, func_quake, func_healing, func_temp1, func_lin, func_pseudo_SSW, func_rain1
 
+def evaluate_model0(ind_vars, params):
+    t = ind_vars[0]
+    z = ind_vars[1]
+    kernel_vs = ind_vars[2]
+    rho = ind_vars[3]
+    dp_rain = ind_vars[4]
+    temperature = ind_vars[5]
+    nsm_samples = ind_vars[6]
+    time_res = ind_vars[7]
+    quakes_timestamps = ind_vars[8]
+
+    p0 = 10. ** params[0]
+    tau_maxs = [10. ** p for p in params[1: 1 + len(quakes_timestamps)]]
+    drops = params[1 + len(quakes_timestamps): 1 + 2 * len(quakes_timestamps)]
+    slope = params[1 + 2 * len(quakes_timestamps)] / (365. * 86400)
+    const = params[2 + 2 * len(quakes_timestamps)]
+    shift = params[3 + 2 * len(quakes_timestamps)] * 30.0 * 86400.0 - time_res / 2.0
+    scale = params[4 + 2 * len(quakes_timestamps)]
+
+    dv_rain = func_rain([z, dp_rain, rho, kernel_vs], [p0])
+    dv_temp = func_temp1([t, temperature, nsm_samples], [shift, scale])
+    dv_quake = np.zeros(len(t))
+    for ixq, q in enumerate(quakes_timestamps):
+        dv_quake += func_healing([t], [tau_maxs[ixq], drops[ixq]], time_quake=q)
+    dv_lin = func_lin([t], [slope, const])
+    #print(dv_rain.max(), dv_temp.max(), dv_quake.max(), dv_lin.max())
+    #print(dv_rain.mean(), dv_temp.mean(), dv_quake.mean(), dv_lin.mean())
+    return(dv_rain + dv_temp + dv_quake + dv_lin)
+
+
 def evaluate_model1(ind_vars, params):
     t = ind_vars[0]
     z = ind_vars[1]
@@ -159,10 +189,19 @@ def get_mcmc_bounds(config):
     lower_bounds = []
     upper_bounds = []
     for i, p in enumerate(config["list_params"]):
-        if p == "waterlevel_p" or p == "phi" or p == "tau_max":
-            # bounds p0
+        if p == "waterlevel_p" or p == "phi":
+            # bounds p0, phi
             lower_bounds.append(np.log10(config["bounds_{}".format(p)][0]))
             upper_bounds.append(np.log10(config["bounds_{}".format(p)][1]))
+
+        elif p == "tau_max":
+            for q in config["quakes"]:
+                lower_bounds.append(np.log10(config["bounds_{}".format(p)][0]))
+                upper_bounds.append(np.log10(config["bounds_{}".format(p)][1]))
+        elif p == "drop_eq":
+            for q in config["quakes"]:
+                lower_bounds.append(config["bounds_{}".format(p)][0])
+                upper_bounds.append(config["bounds_{}".format(p)][1])
         elif p == "shift":
             # bounds shift
             lower_bounds.append((config["bounds_{}".format(p)][0]) / (30. * 86400.))
@@ -173,6 +212,7 @@ def get_mcmc_bounds(config):
         else:
             lower_bounds.append(config["bounds_{}".format(p)][0])
             upper_bounds.append(config["bounds_{}".format(p)][1])
+
     if config["use_logf"]:
         lower_bounds.append(config["bounds_logf"][0])
         upper_bounds.append(config["bounds_logf"][1])
@@ -180,23 +220,35 @@ def get_mcmc_bounds(config):
         lower_bounds.append(config["bounds_g"][0])
         upper_bounds.append(config["bounds_g"][1])
         
-    #print("BOUNDS:")
-    #print([lower_bounds, upper_bounds])
+    # print("BOUNDS:")
+    # print([lower_bounds, upper_bounds])
     bounds = [lower_bounds, upper_bounds]
 
     return(bounds)
 
 
 def get_initial_position_from_mlmodel(params_mod, config):
-    init_pos = params_mod.copy()
+    init_pos = [] #params_mod.copy()
 
     for i, p in enumerate(config["list_params"]):
-        if p == "waterlevel_p" or p == "phi" or p == "tau_max":
-            init_pos[i] = np.log10(init_pos[i])
+        if p == "waterlevel_p" or p == "phi":
+            init_pos.append(np.log10(params_mod[i]))
+        elif p == "tau_max":
+            for q in config["quakes"]:
+                init_pos.append(np.log10(params_mod[i]))
+        elif p == "drop_eq":
+            for q in config["quakes"]:
+                init_pos.append(params_mod[i])
+            
         elif  p == "slope":
-            init_pos[i] *= (365. * 86400)
+            init_pos.append(params_mod[i] * (365. * 86400))
         elif p == "shift":
-            init_pos[i] /= (30. * 86400.)
+            init_pos.append(params_mod[i] / (30. * 86400.))
+        else:
+            init_pos.append(params_mod[i])
+
+    init_pos = np.array(init_pos)
+    
     if config["use_logf"]:
         init_pos = np.concatenate((init_pos, np.array([config["bounds_logf"][1] - 1]))) # append log f
     if config["use_g"]:
@@ -227,7 +279,9 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
     else:
         mparams = params
 
-    if fmodel == 'model1':
+    if fmodel == 'model0':
+        synth = evaluate_model0(ind_vars, mparams)
+    elif fmodel == 'model1':
         synth = evaluate_model1(ind_vars, mparams)
     elif fmodel == "model3":
         synth = evaluate_model3(ind_vars, mparams)
