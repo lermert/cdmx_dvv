@@ -191,24 +191,32 @@ def get_met_data(sta, metdatadir, time_resolution, do_plots=False):
     temp_avg = np.zeros(len(df))
     pres_avg = np.zeros(len(df))
     for ixt, timestamp in enumerate(df.timestamps.values):
-        # rain_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
-        #                               (df_w.timestamps < timestamp + 0.5 * time_resolution)].rain.mean())
-        # temp_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
-        #                               (df_w.timestamps < timestamp + 0.5 * time_resolution)].Temp_C.mean())
-        rain_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - time_resolution) &
-                                      (df_w.timestamps < timestamp + time_resolution)].rain.mean())
-        temp_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - time_resolution) &
-                                      (df_w.timestamps < timestamp + time_resolution)].Temp_C.mean())
-        pres_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - time_resolution) &
-                                      (df_w.timestamps < timestamp + time_resolution)].pressure.mean())
+        rain_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
+                                      (df_w.timestamps < timestamp + 0.5 * time_resolution)].rain.mean())
+        temp_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
+                                      (df_w.timestamps < timestamp + 0.5 * time_resolution)].Temp_C.mean())
+        pres_avg[ixt] = np.nan_to_num(df_w[(df_w.timestamps >= timestamp - 0.5 * time_resolution) &
+                                      (df_w.timestamps < timestamp + 0.5 * time_resolution)].pressure.mean())
     df["rain"] = rain_avg
     df["Temp_C"] = temp_avg
     df["pressure"] = pres_avg * 100.0  # convert from hectopascal to Pascal
     df[df.pressure < 10000.0] = np.mean(df.pressure.values)
     df = df[df.timestamps>UTCDateTime("1990,001").timestamp].copy()
-    #plt.plot(df.timestamps, df.rain, "slateblue")
-    #plt.plot(df.timestamps, df.Temp_C, "firebrick")
-    #plt.show()
+
+    print(df.pressure.mean())
+    print("MEAN RAIN adjusted: ", df.rain.mean())
+
+    df_interp = pd.DataFrame()
+    df_interp["timestamps"] = np.arange(df.timestamps.min(), df.timestamps.max() + time_resolution, time_resolution)
+    print(len(df), len(df_interp), "Lenghts before/after interp.")
+    f = interp1d(df.timestamps.values, df.rain.values, bounds_error=False, kind="linear")
+    df_interp["rain"] = f(df_interp.timestamps.values)
+    g = interp1d(df.timestamps.values, df.Temp_C.values, bounds_error=False, kind="linear")
+    df_interp["Temp_C"] = g(df_interp.timestamps.values)
+    h = interp1d(df.timestamps.values, df.pressure.values, bounds_error=False, kind="linear")
+    df_interp["pressure"] = h(df_interp.timestamps.values)
+
+    df = df_interp.copy()
 
     if do_plots:
         plt.figure(figsize=(12, 3))
