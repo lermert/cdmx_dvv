@@ -6,13 +6,14 @@ import matplotlib.pyplot as plt
 from scipy import optimize
 from model_tools import parse_input, func_sciopt, get_sens_kernel, get_rho_nu, get_rainload_p, func_rain1, \
 func_lin, func_quake, func_healing, func_rain, func_temp1, func_pseudo_SSW
-from inv import set_bounds, get_mcmc_bounds, get_initial_position_from_mlmodel, evaluate_model6, \
+from inv import set_bounds, get_mcmc_bounds, get_initial_position_from_mlmodel, evaluate_model6, evaluate_model0,\
 log_probability_for_emcee, evaluate_model2, evaluate_model1, evaluate_model4, evaluate_model3, evaluate_model5
 from data_preparation import get_met_data, kernels_map, prep_data, sta_to_metsta
 import os
 import sys
 from multiprocessing import Pool
 import corner
+from obspy import UTCDateTime
 
 # turn off underlying numpy paralellisation
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -24,6 +25,8 @@ os.environ["OMP_NUM_THREADS"] = "1"
 config = parse_input(sys.argv[1])
 t0_0 = config["t0"]
 t1_0 = config["t1"]
+qtimes = [UTCDateTime(tst).timestamp for tst in config["quakes"]]
+print(qtimes)
 
 # preparations
 if not os.path.exists(config["output_dir"]):
@@ -90,7 +93,7 @@ for ixsta, sta in enumerate(config["stas"]):
                         
 
                         # get maximum likelihood as starting model
-                        if config["model"] == "model1":
+                        if config["model"] == "model1" or config["model"] == "model0":
                             model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, shift, scale:\
                                            func_sciopt(t,
                                            list_models=[func_rain, func_healing, func_lin, func_temp1],
@@ -160,6 +163,8 @@ for ixsta, sta in enumerate(config["stas"]):
                         # set up the emcee sampler
                         if config["model"] in ["model1", "model2", "model3"]:
                             indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"]]
+                        elif config["model"] == "model0":
+                            indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"], qtimes]
                         elif config["model"] == "model4":
                             indep_vars_emcee = [t, rain_m, temp_C, config["smoothing_temperature_n_samples"]]
                         elif config["model"] == "model5":
@@ -224,6 +229,14 @@ for ixsta, sta in enumerate(config["stas"]):
 
                         # Plot the chains
                         labels = config["list_params"].copy()
+                        ls = []
+                        for l in labels:
+                            if l in ["tau_max", "drop_eq"]:
+                                for q in qtimes:
+                                    ls.append(l)
+                            else:
+                                ls.append(l)
+                        labels = ls
                         if config["use_logf"]:
                             labels += ["log10_f"]
                         if config["use_g"]:
@@ -290,6 +303,8 @@ for ixsta, sta in enumerate(config["stas"]):
 
                         if config["model"] == "model2":
                             dvv_mcmc = evaluate_model2(indep_vars_emcee, maxprob_sample)
+                        elif config["model"] == "model0":
+                            dvv_mcmc = evaluate_model0(indep_vars_emcee, maxprob_sample)                            
                         elif config["model"] == "model1":
                             dvv_mcmc = evaluate_model1(indep_vars_emcee, maxprob_sample)
                         elif config["model"] == "model3":
