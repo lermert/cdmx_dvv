@@ -189,8 +189,8 @@ for ixsta, sta in enumerate(config["stas"]):
                         with Pool(config["n_multiprocess"]) as pool:
                             # Initialize the sampler
                             sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability_for_emcee,
-                                                            #moves=[(emcee.moves.StretchMove(a=0.1), 0.8),
-                                                            #        (emcee.moves.DESnookerMove(), 0.2)],
+                                                            moves=[(emcee.moves.StretchMove(a=2.0), 0.5),
+                                                                    (emcee.moves.DESnookerMove(), 0.5)],
                                                             args=(indep_vars_emcee, emcee_bounds, data_array, sigma_array, config["model"], config["use_logf"], config["use_g"]),
                                                             pool=pool)
                             iterations_performed = 0

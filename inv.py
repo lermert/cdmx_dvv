@@ -234,7 +234,7 @@ def get_initial_position_from_mlmodel(params_mod, config):
         if p == "waterlevel_p" or p == "phi":
             init_pos.append(np.log10(params_mod[i]))
         elif p == "tau_max":
-            for q in config["quakes"]:
+            for ixq, q in enumerate(config["quakes"]):
                 init_pos.append(np.log10(params_mod[i]))
         elif p == "drop_eq":
             for q in config["quakes"]:
