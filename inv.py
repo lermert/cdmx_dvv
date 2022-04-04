@@ -31,6 +31,33 @@ def evaluate_model0(ind_vars, params):
     #print(dv_rain.mean(), dv_temp.mean(), dv_quake.mean(), dv_lin.mean())
     return(dv_rain + dv_temp + dv_quake + dv_lin)
 
+def evaluate_model0a(ind_vars, params):
+    t = ind_vars[0]
+    z = ind_vars[1]
+    kernel_vs = ind_vars[2]
+    rho = ind_vars[3]
+    dp_rain = ind_vars[4]
+    temperature = ind_vars[5]
+    nsm_samples = ind_vars[6]
+    time_res = ind_vars[7]
+    quakes_timestamps = ind_vars[8]
+
+    p0 = 10. ** params[0]
+    tau_maxs = [10. ** p for p in params[1: 1 + len(quakes_timestamps)]]
+    drops = params[1 + len(quakes_timestamps): 1 + 2 * len(quakes_timestamps)]
+    shift = params[1 + 2 * len(quakes_timestamps)] * 30.0 * 86400.0 - time_res / 2.0
+    scale = params[2 + 2 * len(quakes_timestamps)]
+
+    dv_rain = func_rain([z, dp_rain, rho, kernel_vs], [p0])
+    dv_temp = func_temp1([t, temperature, nsm_samples], [shift, scale])
+    dv_quake = np.zeros(len(t))
+    for ixq, q in enumerate(quakes_timestamps):
+        dv_quake += func_healing([t], [tau_maxs[ixq], drops[ixq]], time_quake=q)
+    
+    #print(dv_rain.max(), dv_temp.max(), dv_quake.max(), dv_lin.max())
+    #print(dv_rain.mean(), dv_temp.mean(), dv_quake.mean(), dv_lin.mean())
+    return(dv_rain + dv_temp + dv_quake)
+
 
 def evaluate_model1(ind_vars, params):
     t = ind_vars[0]
@@ -281,6 +308,8 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
 
     if fmodel == 'model0':
         synth = evaluate_model0(ind_vars, mparams)
+    if fmodel == 'model0a':
+        synth = evaluate_model0a(ind_vars, mparams)
     elif fmodel == 'model1':
         synth = evaluate_model1(ind_vars, mparams)
     elif fmodel == "model3":
