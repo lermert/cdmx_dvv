@@ -13,7 +13,21 @@ from data_preparation import kernels_map
 def parse_input(configfile):
 
     config = yaml.safe_load(open(configfile))
+
     config["stas"] = [st1.split("_")[1] for st1 in config["stations"]]  # short name for kernel files
+    gradient_model_used = [st1.split("_")[-1] == "gradient" for st1 in config["stations"]]
+    if sum(gradient_model_used) == len(config["stas"]):
+        config["use_gradient_velocity_model"] = True
+    elif sum(gradient_model_used) == 0:
+        config["use_gradient_velocity_model"] = False
+    else:
+        raise ValueError("Please do not mix _gradient models with other layered models. Run separately.")
+
+    if "tdiffs_thermal" in list(config.keys()):
+        pass
+    else:
+        config["tdiffs_thermal"] = [None]
+
     z = np.linspace(config["z0"], config["z1"], config["nz"])  # depth to consider
     config["dz"] = z[1] - z[0]
     config["z"] = z
@@ -294,16 +308,7 @@ def func_temp(independent_vars, params):
     kernel = independent_vars[2]
     dp_temp = independent_vars[3]
 
-    boundary_layer_depth = params[0]
-    sensitivity_factor = params[1]
-
-
-    # mute whatever is above the boundary layer depth
-    ixs_abovebound = np.where(z < boundary_layer_depth)
-    # print(ixs_abovebound)
-    if type(ixs_abovebound) != float:
-        ixs_abovebound = ixs_abovebound[0]
-    dp_temp[:, ixs_abovebound] = 0.0
+    sensitivity_factor = params[0]
 
     dv_temp = sensitivity_factor * np.dot(dp_temp, kernel * dz)
     return(dv_temp)

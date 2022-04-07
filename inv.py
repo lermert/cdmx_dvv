@@ -18,11 +18,10 @@ def evaluate_modelf(ind_vars, params):
     drops = params[1 + len(quakes_timestamps): 1 + 2 * len(quakes_timestamps)]
     slope = params[1 + 2 * len(quakes_timestamps)] / (365. * 86400)
     const = params[2 + 2 * len(quakes_timestamps)]
-    blevz = params[3 + 2 * len(quakes_timestamps)]
-    tsens = 10. ** params[4 + 2 * len(quakes_timestamps)]
+    tsens = 10. ** params[3 + 2 * len(quakes_timestamps)]
 
     dv_rain = func_rain([z, dp_rain, rho, kernel_vs], [p0])
-    dv_temp = func_temp([t, z, kernel_vs, dp_temp], [blevz, tsens])
+    dv_temp = func_temp([t, z, kernel_vs, dp_temp], [tsens])
     # print("*"* 88)
     # print("dp temp: ", dp_temp.min(), dp_temp.max())
     # print("dv temp: ", dv_temp.min(), dv_temp.max())
@@ -50,11 +49,10 @@ def evaluate_modelfa(ind_vars, params):
     p0 = 10. ** params[0]
     tau_maxs = [10. ** p for p in params[1: 1 + len(quakes_timestamps)]]
     drops = params[1 + len(quakes_timestamps): 1 + 2 * len(quakes_timestamps)]
-    blevz = params[1 + 2 * len(quakes_timestamps)]
-    tsens = params[2 + 2 * len(quakes_timestamps)]
+    tsens = params[1 + 2 * len(quakes_timestamps)]
 
     dv_rain = func_rain([z, dp_rain, rho, kernel_vs], [p0])
-    dv_temp = func_temp([t, z, kernel_vs, dp_temp], [blevz, tsens])
+    dv_temp = func_temp([t, z, kernel_vs, dp_temp], [tsens])
     dv_quake = np.zeros(len(t))
     for ixq, q in enumerate(quakes_timestamps):
         dv_quake += func_healing([t], [tau_maxs[ixq], drops[ixq]], time_quake=q)

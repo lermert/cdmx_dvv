@@ -49,7 +49,12 @@ for ixsta, sta in enumerate(config["stas"]):
     
     # loop over clusters
     for cluster in config["clusters"]:
+
+        # difference between "sta" and "station" parameter: station is like a longer name
+        # that is used by the velocity model script
         station = "cdmx_" + kernels_map(config["stas"][ixsta])
+        if config["use_gradient_velocity_model"]:
+            station += "_gradient"
 
         for ixf, f_min in enumerate(config["f_mins"]):
 
@@ -87,29 +92,36 @@ for ixsta, sta in enumerate(config["stas"]):
 
                         for diff_in_temp in config["tdiffs_thermal"]:
 
+                            # output file basename
+                            fob = ("{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in))
+                            if diff_in_temp is not None:
+                                fob += "_{}mp2s".format(diff_in_temp)
+
                             # tau, autocorrelation time: Diagnostic for convergence
                             have_tau = False
 
                             ###############################################################################
                             dp_rain = get_rainload_p(t, config["z"], rain_m,
                                 station, diff_in=diff_in, drained_undrained_both=config["roeloffs_method"])
-                            dp_temp = get_temperature_z(t, temp_C, config["z"],
+
+                            if diff_in_temp is not None:
+                                dp_temp = get_temperature_z(t, temp_C, config["z"],
                                 diff_in_temp, config["smoothing_temperature_n_samples"])
 
                             # get maximum likelihood as starting model
                             if config["model"] == "modelf":
-                                model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, blevz, tsens:\
+                                model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, tsens:\
                                                func_sciopt(t,
                                                list_models=[func_rain, func_healing, func_lin, func_temp],
                                                list_vars=[[config["z"], dp_rain, rhos, K_vs], [t], [t], [t, config["z"], K_vs, dp_temp]],
-                                               list_params=[[waterlevel_p], [tau_max, drop_eq], [slope, const], [blevz, tsens]],
+                                               list_params=[[waterlevel_p], [tau_max, drop_eq], [slope, const], [tsens]],
                                                n_channels=1)
                             elif config["model"] == "modelfa":
-                                model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, blevz, tsens:\
+                                model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, tsens:\
                                                func_sciopt(t,
                                                list_models=[func_rain, func_healing, func_temp],
                                                list_vars=[[config["z"], dp_rain, rhos, K_vs], [t], [t, config["z"], K_vs, dp_temp]],
-                                               list_params=[[waterlevel_p], [tau_max, drop_eq], [blevz, tsens]],
+                                               list_params=[[waterlevel_p], [tau_max, drop_eq], [tsens]],
                                                n_channels=1)
                             elif config["model"] == "model1" or config["model"] == "model0":
                                 model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, shift, scale:\
@@ -173,15 +185,15 @@ for ixsta, sta in enumerate(config["stas"]):
                                                    bounds=bounds)
 
                             # save the arrays -- for convenience
-                            foname = (config["output_dir"] + "/data_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps.npy".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in))
+                            foname = config["output_dir"] + "/data_{}.npy".format(fob)
                             np.save(foname, data_array[0])
-                            foname = (config["output_dir"] + "/timestamps_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps.npy".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in))
+                            foname = config["output_dir"] + "/timestamps_{}.npy".format(fob)
                             np.save(foname, t)
-                            foname = (config["output_dir"] + "/error_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps.npy".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in))
+                            foname = config["output_dir"] + "/error_{}.npy".format(fob)
                             np.save(foname, sigma_array[0])
-                            foname = (config["output_dir"] + "/rain_m_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps.npy".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in))
+                            foname = config["output_dir"] + "/rain_m_{}.npy".format(fob)
                             np.save(foname, rain_m)
-                            foname = (config["output_dir"] + "/temp_C_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps.npy".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in))
+                            foname = config["output_dir"] + "/temp_C_{}.npy".format(fob)
                             np.save(foname, temp_C)
 
 
@@ -232,8 +244,7 @@ for ixsta, sta in enumerate(config["stas"]):
                                                            np.array(config["init_perturbation"][0: len(init_pos)])
                                     try:
                                         tau = sampler.get_autocorr_time(discard=config["n_burnin"])
-                                        foname = (config["output_dir"] + "/tau_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps_{}m2ps.npy".format(sta, channel1, channel2, cluster, f_min,
-                                                  twin_min, diff_in, diff_in_temp))
+                                        foname = config["output_dir"] + "/tau_{}.npy".format(fob)
                                         np.save(foname, tau)
                                         thin = int(np.max(tau)) // 2
                                         print("Tau could be estimated, tau: ", np.max(tau))
@@ -253,8 +264,7 @@ for ixsta, sta in enumerate(config["stas"]):
                             # get and save the samples
                             fig, axes = plt.subplots(ndim, figsize=(10, 2*ndim), sharex=True)
                             all_samples_temp = sampler.get_chain(discard=config["n_burnin"])
-                            # foname = (config["output_dir"] + "/samples_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps.npy".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in))
-                            # np.save(foname, samples)
+                
 
                             # Plot the chains
                             labels = config["list_params"].copy()
@@ -277,7 +287,7 @@ for ixsta, sta in enumerate(config["stas"]):
                                 ax.set_ylabel(labels[ixparam])
                                 ax.yaxis.set_label_coords(-0.1, 0.5)
                             axes[-1].set_xlabel("step number")
-                            foname = (config["output_dir"] + "/MCMC_chains_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps_{}m2ps{}.png".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in, diff_in_temp, {True: "", False: "_noconv"}[have_tau]))
+                            foname = (config["output_dir"] + "/MCMC_chains_{}{}.png".format(fob, {True: "", False: "_noconv"}[have_tau]))
                             fig.savefig(foname)
                             plt.close()
 
@@ -292,14 +302,14 @@ for ixsta, sta in enumerate(config["stas"]):
                                 fig = corner.corner(
                                     samples_probs, labels=labels
                                 );
-                                foname = (config["output_dir"] + "/MCMC_cornerplot_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps_{}m2ps{}.png".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in, diff_in_temp, {True: "", False: "_noconv"}[have_tau]))
+                                foname = (config["output_dir"] + "/MCMC_{}{}.png".format(fob, {True: "", False: "_noconv"}[have_tau]))
                                 fig.savefig(foname)
                                 plt.close()
 
                             # save the "clean" ensemble: Post burn-in, flat, decimated by 1/2 * autocorrelation time.
-                            foname = (config["output_dir"] + "/probability_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps_{}m2ps{}.npy".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in, diff_in_temp, {True: "", False: "_noconv"}[have_tau]))
+                            foname = (config["output_dir"] + "/probability_{}{}.npy".format(fob, {True: "", False: "_noconv"}[have_tau]))
                             np.save(foname, log_prob_samples)
-                            foname = (config["output_dir"] + "/samples_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps_{}m2ps{}.npy".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in, diff_in_temp, {True: "", False: "_noconv"}[have_tau]))
+                            foname = (config["output_dir"] + "/samples_{}{}.npy".format.format(fob, {True: "", False: "_noconv"}[have_tau]))
                             np.save(foname, flat_samples)
                             
                             # get the median and percentile models and save
@@ -307,7 +317,7 @@ for ixsta, sta in enumerate(config["stas"]):
                             for ixp in range(ndim):
                                 mcmcout.append(np.percentile(flat_samples[:, ixp], [16, 50, 84]))
                             mcmcout = np.array(mcmcout)
-                            foname = (config["output_dir"] + "/percs_{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps_{}m2ps{}.npy".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in, diff_in_temp, {True: "", False: "_noconv"}[have_tau]))
+                            foname = (config["output_dir"] + "/percs_{}{}.npy".format(fob, {True: "", False: "_noconv"}[have_tau]))
                             np.save(foname, mcmcout)
 
 
@@ -355,8 +365,7 @@ for ixsta, sta in enumerate(config["stas"]):
                             plt.xlabel("timestamps (s)")
                             plt.legend(["Residual"], loc=3, fontsize="small")
                             plt.tight_layout()
-                            plt.savefig(config["output_dir"] + "/{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps_{}mp2s_testplot2{}.png".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in, diff_in_temp, {True: "", False: "_noconv"}[have_tau]))
-
+                            plt.savefig(config["output_dir"] + "/testplot2{}{}.png".format(fob, {True: "", False: "_noconv"}[have_tau]))
 
                             # print info
                             print("Median neg. log. probability for MC inversion: ",
