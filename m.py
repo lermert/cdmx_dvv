@@ -309,7 +309,7 @@ for ixsta, sta in enumerate(config["stas"]):
                             # save the "clean" ensemble: Post burn-in, flat, decimated by 1/2 * autocorrelation time.
                             foname = (config["output_dir"] + "/probability_{}{}.npy".format(fob, {True: "", False: "_noconv"}[have_tau]))
                             np.save(foname, log_prob_samples)
-                            foname = (config["output_dir"] + "/samples_{}{}.npy".format.format(fob, {True: "", False: "_noconv"}[have_tau]))
+                            foname = (config["output_dir"] + "/samples_{}{}.npy".format(fob, {True: "", False: "_noconv"}[have_tau]))
                             np.save(foname, flat_samples)
                             
                             # get the median and percentile models and save
