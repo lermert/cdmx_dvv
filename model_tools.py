@@ -13,7 +13,21 @@ from data_preparation import kernels_map
 def parse_input(configfile):
 
     config = yaml.safe_load(open(configfile))
+
     config["stas"] = [st1.split("_")[1] for st1 in config["stations"]]  # short name for kernel files
+    gradient_model_used = [st1.split("_")[-1] == "gradient" for st1 in config["stations"]]
+    if sum(gradient_model_used) == len(config["stas"]):
+        config["use_gradient_velocity_model"] = True
+    elif sum(gradient_model_used) == 0:
+        config["use_gradient_velocity_model"] = False
+    else:
+        raise ValueError("Please do not mix _gradient models with other layered models. Run separately.")
+
+    if "tdiffs_thermal" in list(config.keys()):
+        pass
+    else:
+        config["tdiffs_thermal"] = [None]
+
     z = np.linspace(config["z0"], config["z1"], config["nz"])  # depth to consider
     config["dz"] = z[1] - z[0]
     config["z"] = z
@@ -249,40 +263,55 @@ def func_healing_list(independent_vars, params):
 #################################################
 # Thermoelastic effect following Richter et al., 2015
 #################################################
+def diff_temp_term(t0_surface, t, z, n, diff, w0=2.*np.pi/(365.25*86400.0)):
+    gamma = np.sqrt(n * w0 / (2. * diff))
+    ts = t0_surface * np.exp(1.j * (n * t * w0 - gamma * z) - gamma * z)
+    return(np.real(ts))
 
-def temperature_dv_richter(z, nu, alpha, kappa, toe, k, T_surface, w):
-    gamma = np.sqrt(w / (2. * kappa))
-    exp1 = 2. * np.exp(-(1 + 1.j) * gamma * z)
-    exp2 = -(1. + nu) * (1. - nu) * k / gamma * np.exp(-k * z)
-    fac = alpha * (1. + nu) / (1. - nu) * toe * T_surface  # T_surface is a cosine describing surface temperature
-    return(fac * np.abs(exp1 * exp2))
+def cn(n, t, y, tau=86400.0 * 365.25):
+    c = y * np.exp(-1.j * 2 * n * np.pi * t / tau)
+    return c.sum()/c.size
+
+
+def get_temperature_z(t, T_surface, z, thermal_diffusivity,
+                      nsm_samples, n_fourier_components=5):
+    
+    # smoothing
+    tsurf = np.zeros(len(T_surface) + 2 * nsm_samples)
+    tsurf[nsm_samples: -nsm_samples] = T_surface
+    tsurf[0: nsm_samples] = tsurf[nsm_samples]
+    tsurf[-nsm_samples:] = tsurf[-nsm_samples-1]
+    T_surface = np.convolve(tsurf, np.ones(nsm_samples)/nsm_samples, mode='same')[nsm_samples: -nsm_samples]
+    T_surface -= T_surface.mean()
+
+    # get Fourier series representation of temperature
+    fcoeffs = np.array([cn(n, t - t.min(), T_surface, tau=86400.0 * 365.25) \
+        for n in range(n_fourier_components)])
+
+    # get diffusion result
+    difftemp = np.zeros((len(t), len(z)))
+    for ix, zz in enumerate(z):
+        for n, fc in enumerate(fcoeffs):
+            difftemp[:, ix] += np.array([diff_temp_term(fc, tt, zz, n, thermal_diffusivity) \
+            for tt in t - t.min()])
+
+    # return diffusion result
+    return(difftemp)
+
 
 def func_temp(independent_vars, params):
-    raise NotImplementedError("Probably not correct")
+
     t = independent_vars[0]
     z = independent_vars[1]
-
-    nu = independent_vars[2]
-    T_surface = independent_vars[3]
-    kernel = independent_vars[4]
     dz = z[1] - z[0]
+    assert dz > 0.0
+    kernel = independent_vars[2]
+    dp_temp = independent_vars[3]
 
-    k = params[0]
-    toe = params[1]
+    sensitivity_factor = params[0]
 
-    alpha_th = 1.e-5  # berger 1975
-    kappa = 1.e-6
-    w = 2. * np.pi / (364.25 * 86400.)
-
-    dvv_T = np.zeros((len(t), len(z)))
-
-    for i, zz in enumerate(z):
-        dvv_T[:, i] = temperature_dv_richter(zz, nu[i], alpha_th,
-                                             kappa, toe, k, T_surface, w)
-    dv_thermoel = np.dot(dvv_T, kernel * dz)
-    return(dv_thermoel)
-
-
+    dv_temp = sensitivity_factor * np.dot(dp_temp, kernel * dz)
+    return(dv_temp)
 
 def func_temp1(independent_vars, params):
 
@@ -295,6 +324,7 @@ def func_temp1(independent_vars, params):
     tsurf[0: nsm_samples] = tsurf[nsm_samples]
     tsurf[-nsm_samples:] = tsurf[-nsm_samples-1]
     T_surface = np.convolve(tsurf, np.ones(nsm_samples)/nsm_samples, mode='same')[nsm_samples: -nsm_samples]
+
 
     shift = params[0]
     scale = params[1]

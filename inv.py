@@ -1,6 +1,65 @@
 import numpy as np
 from math import sqrt, pi
-from model_tools import func_rain, func_quake, func_healing, func_temp1, func_lin, func_pseudo_SSW, func_rain1
+from model_tools import func_rain, func_quake, func_healing, func_temp1,\
+func_lin, func_pseudo_SSW, func_rain1, func_temp
+
+
+def evaluate_modelf(ind_vars, params):
+    t = ind_vars[0]
+    z = ind_vars[1]
+    kernel_vs = ind_vars[2]
+    rho = ind_vars[3]
+    dp_rain = ind_vars[4]
+    dp_temp = ind_vars[5]
+    quakes_timestamps = ind_vars[6]
+
+    p0 = 10. ** params[0]
+    tau_maxs = [10. ** p for p in params[1: 1 + len(quakes_timestamps)]]
+    drops = params[1 + len(quakes_timestamps): 1 + 2 * len(quakes_timestamps)]
+    slope = params[1 + 2 * len(quakes_timestamps)] / (365. * 86400)
+    const = params[2 + 2 * len(quakes_timestamps)]
+    tsens = 10. ** params[3 + 2 * len(quakes_timestamps)]
+
+    dv_rain = func_rain([z, dp_rain, rho, kernel_vs], [p0])
+    dv_temp = func_temp([t, z, kernel_vs, dp_temp], [tsens])
+    # print("*"* 88)
+    # print("dp temp: ", dp_temp.min(), dp_temp.max())
+    # print("dv temp: ", dv_temp.min(), dv_temp.max())
+    # print("kernel: ", kernel_vs.min(), kernel_vs.max())
+    # print("*"* 88)
+    
+    dv_quake = np.zeros(len(t))
+    for ixq, q in enumerate(quakes_timestamps):
+        dv_quake += func_healing([t], [tau_maxs[ixq], drops[ixq]], time_quake=q)
+    dv_lin = func_lin([t], [slope, const])
+    #print(dv_rain.max(), dv_temp.max(), dv_quake.max(), dv_lin.max())
+    #print(dv_rain.mean(), dv_temp.mean(), dv_quake.mean(), dv_lin.mean())
+    return(dv_rain + dv_temp + dv_quake + dv_lin)
+
+
+def evaluate_modelfa(ind_vars, params):
+    t = ind_vars[0]
+    z = ind_vars[1]
+    kernel_vs = ind_vars[2]
+    rho = ind_vars[3]
+    dp_rain = ind_vars[4]
+    dp_temp = ind_vars[5]
+    quakes_timestamps = ind_vars[6]
+
+    p0 = 10. ** params[0]
+    tau_maxs = [10. ** p for p in params[1: 1 + len(quakes_timestamps)]]
+    drops = params[1 + len(quakes_timestamps): 1 + 2 * len(quakes_timestamps)]
+    tsens = params[1 + 2 * len(quakes_timestamps)]
+
+    dv_rain = func_rain([z, dp_rain, rho, kernel_vs], [p0])
+    dv_temp = func_temp([t, z, kernel_vs, dp_temp], [tsens])
+    dv_quake = np.zeros(len(t))
+    for ixq, q in enumerate(quakes_timestamps):
+        dv_quake += func_healing([t], [tau_maxs[ixq], drops[ixq]], time_quake=q)
+    
+    #print(dv_rain.max(), dv_temp.max(), dv_quake.max(), dv_lin.max())
+    #print(dv_rain.mean(), dv_temp.mean(), dv_quake.mean(), dv_lin.mean())
+    return(dv_rain + dv_temp + dv_quake)
 
 def evaluate_model0(ind_vars, params):
     t = ind_vars[0]
@@ -220,7 +279,6 @@ def get_mcmc_bounds(config):
             # bounds p0, phi
             lower_bounds.append(np.log10(config["bounds_{}".format(p)][0]))
             upper_bounds.append(np.log10(config["bounds_{}".format(p)][1]))
-
         elif p == "tau_max":
             for q in config["quakes"]:
                 lower_bounds.append(np.log10(config["bounds_{}".format(p)][0]))
@@ -236,6 +294,9 @@ def get_mcmc_bounds(config):
         elif p == "slope":
             lower_bounds.append((config["bounds_{}".format(p)][0]) * (365. * 86400.))
             upper_bounds.append((config["bounds_{}".format(p)][1]) * (365. * 86400.))
+        elif p == "tsens":
+            lower_bounds.append(np.log10(config["bounds_{}".format(p)][0]))
+            upper_bounds.append(np.log10(config["bounds_{}".format(p)][1]))
         else:
             lower_bounds.append(config["bounds_{}".format(p)][0])
             upper_bounds.append(config["bounds_{}".format(p)][1])
@@ -266,7 +327,8 @@ def get_initial_position_from_mlmodel(params_mod, config):
         elif p == "drop_eq":
             for q in config["quakes"]:
                 init_pos.append(params_mod[i])
-            
+        elif p == "tsens":
+            init_pos.append(np.log10(params_mod[i]))
         elif  p == "slope":
             init_pos.append(params_mod[i] * (365. * 86400))
         elif p == "shift":
@@ -306,9 +368,11 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
     else:
         mparams = params
 
-    if fmodel == 'model0':
+    if fmodel == "modelf":
+        synth = evaluate_modelf(ind_vars, mparams)
+    elif fmodel == 'model0':
         synth = evaluate_model0(ind_vars, mparams)
-    if fmodel == 'model0a':
+    elif fmodel == 'model0a':
         synth = evaluate_model0a(ind_vars, mparams)
     elif fmodel == 'model1':
         synth = evaluate_model1(ind_vars, mparams)
