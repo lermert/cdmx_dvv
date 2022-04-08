@@ -8,10 +8,11 @@ def evaluate_modelf(ind_vars, params):
     t = ind_vars[0]
     z = ind_vars[1]
     kernel_vs = ind_vars[2]
-    rho = ind_vars[3]
-    dp_rain = ind_vars[4]
-    dp_temp = ind_vars[5]
-    quakes_timestamps = ind_vars[6]
+    kernel_vs_temp = ind_vars[3]
+    rho = ind_vars[4]
+    dp_rain = ind_vars[5]
+    dp_temp = ind_vars[6]
+    quakes_timestamps = ind_vars[7]
 
     p0 = 10. ** params[0]
     tau_maxs = [10. ** p for p in params[1: 1 + len(quakes_timestamps)]]
@@ -21,7 +22,7 @@ def evaluate_modelf(ind_vars, params):
     tsens = 10. ** params[3 + 2 * len(quakes_timestamps)]
 
     dv_rain = func_rain([z, dp_rain, rho, kernel_vs], [p0])
-    dv_temp = func_temp([t, z, kernel_vs, dp_temp], [tsens])
+    dv_temp = func_temp([t, z, kernel_vs_temp, dp_temp], [tsens])
     # print("*"* 88)
     # print("dp temp: ", dp_temp.min(), dp_temp.max())
     # print("dv temp: ", dv_temp.min(), dv_temp.max())

@@ -370,7 +370,7 @@ def get_c_from_str(fname):
     return(float(fname.split("=")[-1]))
 
 
-def get_sens_kernel(config, sta, f_min):
+def get_sens_kernel(config, sta, f_min, z):
     kernels = glob("{}/kernels_{}.{}.f={}*".\
         format(config["kernel_dir"], config["wavepol"], kernels_map(sta), f_min))
     kernels.sort(key=get_c_from_str)
@@ -382,7 +382,7 @@ def get_sens_kernel(config, sta, f_min):
         # interpolate kernel to the depth vector we are using
         fint = interp1d(np.abs(z_k - 6371000.0), vs_k,
                         bounds_error=False, fill_value=0, kind="nearest")  # interpolate to the z defined here
-        K_vs = fint(config["z"])
+        K_vs = fint(z)
         if config["suppress_shallow_sensitivity"]:
             K_vs[config["z"] < config["depth_to_sens"]] = 0.0
         success = True

@@ -81,74 +81,100 @@ for ixsta, sta in enumerate(config["stas"]):
                     if not success:
                         continue
 
-                    K_vs, success = get_sens_kernel(config, sta, f_min)
-                    if not success:
-                        continue
-
-                    # get material parameters
-                    rhos, nus = get_rho_nu(config["z"], station)
-
                     for diff_in in config["tdiffs"]:
 
                         for diff_in_temp in config["tdiffs_thermal"]:
 
                             # output file basename
-                            fob = ("{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in))
+                            datafob = "{}_{}-{}_{}cl_{}Hz_{}s".format(sta, channel1, channel2, cluster, f_min, twin_min)
+                            fob = "{}_{}-{}_{}cl_{}Hz_{}s_{}m2ps".format(sta, channel1, channel2, cluster, f_min, twin_min, diff_in)
                             if diff_in_temp is not None:
                                 fob += "_{}mp2s".format(diff_in_temp)
+
+                            # don't repeat calculations / start off again where was interrupted
+                            if os.path.exists(config["output_dir"] + "/tau_{}.npy".format(fob)):
+                                print("{} was already inverted, continuing...".format(fob))
+                                continue
 
                             # tau, autocorrelation time: Diagnostic for convergence
                             have_tau = False
 
+                            # find z array
+                            if not config["use_variable_depth"]:
+                                modelz = config["z"]
+                            else:
+                                if f_min == 0.5:
+                                    modelz = np.linspace(0., 2000., config["nz"])
+                                elif f_min == 1.0:
+                                    modelz = np.linspace(0., 1000., config["nz"])
+                                elif f_min == 2.0:
+                                    modelz = np.linspace(0., 500., config["nz"])
+                                elif f_min == 4.0:
+                                    modelz = np.linspace(0., 250., config["nz"])
+                                else:
+                                    raise ValueError("Not defined, set use_variable_depth to false in config file")
+
+                            K_vs, success = get_sens_kernel(config, sta, (f_max - f_min) / 2. + f_min, modelz)
+                            if not success:
+                                continue
+
+                            tempz = np.linspace(0., 50., 501)
+                            K_vs_temp, success = get_sens_kernel(config, sta, (f_max - f_min) / 2. + f_min, tempz)
+
+                            # get material parameters
+                            rhos, nus = get_rho_nu(modelz, station)
+
+
                             ###############################################################################
-                            dp_rain = get_rainload_p(t, config["z"], rain_m,
+                            dp_rain = get_rainload_p(t, modelz, rain_m,
                                 station, diff_in=diff_in, drained_undrained_both=config["roeloffs_method"])
 
                             if diff_in_temp is not None:
-                                dp_temp = get_temperature_z(t, temp_C, config["z"],
+                                dp_temp = get_temperature_z(t, temp_C, tempz,
                                 diff_in_temp, config["smoothing_temperature_n_samples"])
+
 
                             # get maximum likelihood as starting model
                             if config["model"] == "modelf":
                                 model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, tsens:\
                                                func_sciopt(t,
                                                list_models=[func_rain, func_healing, func_lin, func_temp],
-                                               list_vars=[[config["z"], dp_rain, rhos, K_vs], [t], [t], [t, config["z"], K_vs, dp_temp]],
+                                               list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t], [t, tempz, K_vs_temp, dp_temp]],
                                                list_params=[[waterlevel_p], [tau_max, drop_eq], [slope, const], [tsens]],
                                                n_channels=1)
                             elif config["model"] == "modelfa":
                                 model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, tsens:\
                                                func_sciopt(t,
                                                list_models=[func_rain, func_healing, func_temp],
-                                               list_vars=[[config["z"], dp_rain, rhos, K_vs], [t], [t, config["z"], K_vs, dp_temp]],
+                                               list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t, tempz, K_vs_temp, dp_temp]],
                                                list_params=[[waterlevel_p], [tau_max, drop_eq], [tsens]],
                                                n_channels=1)
                             elif config["model"] == "model1" or config["model"] == "model0":
                                 model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, shift, scale:\
                                                func_sciopt(t,
                                                list_models=[func_rain, func_healing, func_lin, func_temp1],
-                                               list_vars=[[config["z"], dp_rain, rhos, K_vs], [t], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
+                                               list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
                                                list_params=[[waterlevel_p], [tau_max, drop_eq], [slope, const], [shift, scale]],
                                                n_channels=1)
                             elif config["model"] == "model0a":
                                 model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, shift, scale:\
                                                func_sciopt(t,
                                                list_models=[func_rain, func_healing, func_temp1],
-                                               list_vars=[[config["z"], dp_rain, rhos, K_vs], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
+                                               list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
                                                list_params=[[waterlevel_p], [tau_max, drop_eq], [shift, scale]],
                                                n_channels=1)
                             elif config["model"] == "model2":
                                 model_to_fit = lambda t, waterlevel_p, drop_eq, recovery, slope, const, shift, scale:\
                                        func_sciopt(t,
                                        list_models=[func_rain, func_quake, func_lin, func_temp1],
-                                       list_vars=[[config["z"], dp_rain, rhos, K_vs], [t], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
+                                       list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
                                        list_params=[[waterlevel_p], [drop_eq, recovery], [slope, const], [shift, scale]],
                                        n_channels=1)
                             elif config["model"] == "model3":
                                 model_to_fit = lambda t, waterlevel_p, slope, const, shift, scale:\
                                        func_sciopt(t,
                                        list_models=[func_rain, func_lin, func_temp1],
-                                       list_vars=[[config["z"], dp_rain, rhos, K_vs], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
+                                       list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
                                        list_params=[[waterlevel_p], [slope, const], [shift, scale]],
                                        n_channels=1)
                             elif config["model"] == "model4":
@@ -162,14 +188,14 @@ for ixsta, sta in enumerate(config["stas"]):
                                 model_to_fit = lambda t, factor_pp, tau_max, drop_eq, slope, const, shift, scale:\
                                            func_sciopt(t,
                                            list_models=[func_rain1, func_healing, func_lin, func_temp1],
-                                           list_vars=[[config["z"], dp_rain, rhos, K_vs, pressure_Pa], [t], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
+                                           list_vars=[[modelz, dp_rain, rhos, K_vs, pressure_Pa], [t], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
                                            list_params=[[factor_pp], [tau_max, drop_eq], [slope, const], [shift, scale]],
                                            n_channels=1)
                             elif config["model"] == "model6":
                                 model_to_fit = lambda t, factor_pp, tau_max, drop_eq, shift, scale:\
                                            func_sciopt(t,
                                            list_models=[func_rain1, func_healing, func_temp1],
-                                           list_vars=[[config["z"], dp_rain, rhos, K_vs, pressure_Pa], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
+                                           list_vars=[[modelz, dp_rain, rhos, K_vs, pressure_Pa], [t], [t, temp_C, config["smoothing_temperature_n_samples"]]],
                                            list_params=[[factor_pp], [tau_max, drop_eq], [shift, scale]],
                                            n_channels=1)
                             else:
@@ -185,31 +211,36 @@ for ixsta, sta in enumerate(config["stas"]):
                                                    bounds=bounds)
 
                             # save the arrays -- for convenience
-                            foname = config["output_dir"] + "/data_{}.npy".format(fob)
-                            np.save(foname, data_array[0])
-                            foname = config["output_dir"] + "/timestamps_{}.npy".format(fob)
-                            np.save(foname, t)
-                            foname = config["output_dir"] + "/error_{}.npy".format(fob)
-                            np.save(foname, sigma_array[0])
-                            foname = config["output_dir"] + "/rain_m_{}.npy".format(fob)
-                            np.save(foname, rain_m)
-                            foname = config["output_dir"] + "/temp_C_{}.npy".format(fob)
-                            np.save(foname, temp_C)
+                            foname = config["output_dir"] + "/data_{}.npy".format(datafob)
+                            if not os.path.exists(foname):
+                                np.save(foname, data_array[0])
+                            foname = config["output_dir"] + "/timestamps_{}.npy".format(datafob)
+                            if not os.path.exists(foname):
+                                np.save(foname, t)
+                            foname = config["output_dir"] + "/error_{}.npy".format(datafob)
+                            if not os.path.exists(foname):
+                                np.save(foname, sigma_array[0])
+                            foname = config["output_dir"] + "/rain_m_{}.npy".format(datafob)
+                            if not os.path.exists(foname):
+                                np.save(foname, rain_m)
+                            foname = config["output_dir"] + "/temp_C_{}.npy".format(datafob)
+                            if not os.path.exists(foname):
+                                np.save(foname, temp_C)
 
 
                             # set up the emcee sampler
                             if config["model"] in ["modelf", "modelfa"]:
-                                indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, dp_temp, qtimes]
+                                indep_vars_emcee = [t, modelz, K_vs, K_vs_temp, rhos, dp_rain, dp_temp, qtimes]
                             elif config["model"] in ["model1", "model2", "model3"]:
-                                indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"]]
+                                indep_vars_emcee = [t, modelz, K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"]]
                             elif config["model"] in ["model0", "model0a"]:
-                                indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"], qtimes]
+                                indep_vars_emcee = [t, modelz, K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"], qtimes]
                             elif config["model"] == "model4":
                                 indep_vars_emcee = [t, rain_m, temp_C, config["smoothing_temperature_n_samples"]]
                             elif config["model"] == "model5":
-                                indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, pressure_Pa, config["smoothing_temperature_n_samples"], config["time_resolution"]]
+                                indep_vars_emcee = [t, modelz, K_vs, rhos, dp_rain, temp_C, pressure_Pa, config["smoothing_temperature_n_samples"], config["time_resolution"]]
                             elif config["model"] == "model6":
-                                indep_vars_emcee = [t, config["z"], K_vs, rhos, dp_rain, temp_C, pressure_Pa, config["smoothing_temperature_n_samples"], config["time_resolution"]]
+                                indep_vars_emcee = [t, modelz, K_vs, rhos, dp_rain, temp_C, pressure_Pa, config["smoothing_temperature_n_samples"], config["time_resolution"]]
 
 
                             # get the bounds
