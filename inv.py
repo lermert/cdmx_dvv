@@ -417,6 +417,8 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
 
     if fmodel == "modelf":
         synth = evaluate_modelf(ind_vars, mparams)
+    if fmodel == "modelfa":
+        synth = evaluate_modelfa(ind_vars, mparams)
     elif fmodel == "modelfq":
         synth = evaluate_modelfq(ind_vars, mparams)
     elif fmodel == 'model0':
