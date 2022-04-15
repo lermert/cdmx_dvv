@@ -8,7 +8,7 @@ from model_tools import parse_input, func_sciopt, get_sens_kernel, get_rho_nu, g
 func_lin, func_quake, func_healing, func_rain, func_temp1, func_pseudo_SSW, get_temperature_z, func_temp
 from inv import set_bounds, get_mcmc_bounds, get_initial_position_from_mlmodel, evaluate_model6, evaluate_model0,\
 log_probability_for_emcee, evaluate_model2, evaluate_model1, evaluate_model4, evaluate_model3, evaluate_model5,\
-evaluate_model0a, evaluate_modelf, evaluate_modelfa
+evaluate_model0a, evaluate_modelf, evaluate_modelfa, evaluate_modelfq
 from data_preparation import get_met_data, kernels_map, prep_data, sta_to_metsta
 import os
 import sys
@@ -149,6 +149,13 @@ for ixsta, sta in enumerate(config["stas"]):
                                                list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t, tempz, K_vs_temp, dp_temp]],
                                                list_params=[[waterlevel_p], [tau_max, drop_eq], [tsens]],
                                                n_channels=1)
+                            elif config["model"] == "modelfq":
+                                model_to_fit = lambda t, waterlevel_p, drop_eq, recovery, slope, const, tsens:\
+                                               func_sciopt(t,
+                                               list_models=[func_rain, func_quake, func_lin, func_temp],
+                                               list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t], [t, tempz, K_vs_temp, dp_temp]],
+                                               list_params=[[waterlevel_p], [drop_eq, recovery], [slope, const], [tsens]],
+                                               n_channels=1)
                             elif config["model"] == "model1" or config["model"] == "model0":
                                 model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, shift, scale:\
                                                func_sciopt(t,
@@ -229,7 +236,7 @@ for ixsta, sta in enumerate(config["stas"]):
 
 
                             # set up the emcee sampler
-                            if config["model"] in ["modelf", "modelfa"]:
+                            if config["model"] in ["modelf", "modelfa", "modelfq"]:
                                 indep_vars_emcee = [t, modelz, K_vs, K_vs_temp, rhos, dp_rain, dp_temp, qtimes]
                             elif config["model"] in ["model1", "model2", "model3"]:
                                 indep_vars_emcee = [t, modelz, K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"]]
@@ -301,7 +308,7 @@ for ixsta, sta in enumerate(config["stas"]):
                             labels = config["list_params"].copy()
                             ls = []
                             for l in labels:
-                                if l in ["tau_max", "drop_eq"]:
+                                if l in ["tau_max", "drop_eq", "recovery"]:
                                     for q in qtimes:
                                         ls.append(l)
                                 else:
@@ -359,6 +366,8 @@ for ixsta, sta in enumerate(config["stas"]):
 
                             if config["model"] == "modelf":
                                 dvv_mcmc = evaluate_modelf(indep_vars_emcee, maxprob_sample)
+                            elif config["model"] == "modelfq":
+                                dvv_mcmc = evaluate_modelfq(indep_vars_emcee, maxprob_sample)
                             elif config["model"] == "modelfa":
                                 dvv_mcmc = evaluate_modelfa(indep_vars_emcee, maxprob_sample)
                             elif config["model"] == "model2":
