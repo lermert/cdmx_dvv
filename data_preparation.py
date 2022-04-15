@@ -123,7 +123,7 @@ def kernels_map(sta):
                    "ctvm": "ctvm",
                    "gmvm": "cjvm",
                    "mcvm": "cjvm",
-                   "mhvm": "unm",
+                   "mhvm": "mhvm",
                    "mpvm": "cjvm",
                    "mzvm": "cjvm",
                    "ptvm": "cjvm",
