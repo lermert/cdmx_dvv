@@ -143,7 +143,7 @@ for ixsta, sta in enumerate(config["stas"]):
                                                list_params=[[waterlevel_p], [tau_max, drop_eq], [slope, const], [tsens]],
                                                n_channels=1)
                             elif config["model"] == "modelfa":
-                                model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, tsens:\
+                                model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, tsens:\
                                                func_sciopt(t,
                                                list_models=[func_rain, func_healing, func_temp],
                                                list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t, tempz, K_vs_temp, dp_temp]],
