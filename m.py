@@ -81,6 +81,9 @@ for ixsta, sta in enumerate(config["stas"]):
                     if not success:
                         continue
 
+                    for dd in data_array:
+                        dd -= dd[0]
+
                     for diff_in in config["tdiffs"]:
 
                         for diff_in_temp in config["tdiffs_thermal"]:
@@ -100,26 +103,28 @@ for ixsta, sta in enumerate(config["stas"]):
                             have_tau = False
 
                             # find z array
-                            if not config["use_variable_depth"]:
-                                modelz = config["z"]
-                            else:
-                                if f_min == 0.5:
-                                    modelz = np.linspace(0., 2000., config["nz"])
-                                elif f_min == 1.0:
-                                    modelz = np.linspace(0., 1000., config["nz"])
-                                elif f_min == 2.0:
-                                    modelz = np.linspace(0., 500., config["nz"])
-                                elif f_min == 4.0:
-                                    modelz = np.linspace(0., 250., config["nz"])
-                                else:
-                                    raise ValueError("Not defined, set use_variable_depth to false in config file")
-
+                            # if not config["use_variable_depth"]:
+                            #     modelz = config["z"]
+                            # else:
+                            #     if f_min == 0.5:
+                            #         modelz = np.linspace(0., 2000., config["nz"])
+                            #     elif f_min == 1.0:
+                            #         modelz = np.linspace(0., 1000., config["nz"])
+                            #     elif f_min == 2.0:
+                            #         modelz = np.linspace(0., 500., config["nz"])
+                            #     elif f_min == 4.0:
+                            #         modelz = np.linspace(0., 250., config["nz"])
+                            #     else:
+                            #         raise ValueError("Not defined, set use_variable_depth to false in config file")
+                            modelz = config["z"]
                             K_vs, success = get_sens_kernel(config, sta, (f_max - f_min) / 2. + f_min, modelz)
                             if not success:
                                 continue
 
-                            tempz = np.linspace(0., 50., 501)
-                            K_vs_temp, success = get_sens_kernel(config, sta, (f_max - f_min) / 2. + f_min, tempz)
+                            #tempz = np.linspace(0., 50., 501)
+                            tempz = modelz
+                            K_vs_temp = K_vs
+                            #K_vs_temp, success = get_sens_kernel(config, sta, (f_max - f_min) / 2. + f_min, tempz)
 
                             # get material parameters
                             rhos, nus = get_rho_nu(modelz, station)
