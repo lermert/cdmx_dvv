@@ -28,9 +28,26 @@ def parse_input(configfile):
     else:
         config["tdiffs_thermal"] = [None]
 
-    z = np.linspace(config["z0"], config["z1"], config["nz"])  # depth to consider
-    config["dz"] = z[1] - z[0]
+
+    z = np.zeros(sum(config["nz"]) - len(config["nz"]) + 1)
+
+    nz = 0
+    for i, nnz in enumerate(config["nz"]):
+        z[nz: nz + nnz] = np.linspace(config["z"][i], config["z"][i + 1], nnz)
+        nz += nnz - 1
+    z[-1] = config["z"][-1]
+    print(z)
+
+    dz = np.zeros(len(z))
+    dz[:-1] = z[1:] - z[:-1]
+    dz[-1] = dz[-1]
+    print(dz)
     config["z"] = z
+    config["dz"] = dz
+
+    #z = np.linspace(config["z0"], config["z1"], config["nz"])  # depth to consider
+    #config["dz"] = z[1] - z[0]
+    #config["z"] = z
     config["t0"] = UTCDateTime(config["t0"])
     config["t1"] = UTCDateTime(config["t1"])
     refs = []
@@ -134,7 +151,10 @@ def func_rain(independent_vars, params):
     dp_rain = independent_vars[1]
     rhos = independent_vars[2]
     kernel = independent_vars[3]
-    dz = z[1] - z[0]
+    #dz = z[1] - z[0]
+    dz = np.zeros(len(z))
+    dz[:-1] = z[1:] - z[:-1]
+    dz[-1] = dz[-1]
 
     waterlevel = params[0]
 
@@ -152,7 +172,10 @@ def func_rain1(independent_vars, params):
     rhos = independent_vars[2]
     kernel = independent_vars[3]
     pressure = independent_vars[4]
-    dz = z[1] - z[0]
+    #dz = z[1] - z[0]
+    dz = np.zeros(len(z))
+    dz[:-1] = z[1:] - z[:-1]
+    dz[-1] = dz[-1]
 
     fac = params[0]
 
@@ -303,8 +326,12 @@ def func_temp(independent_vars, params):
 
     t = independent_vars[0]
     z = independent_vars[1]
-    dz = z[1] - z[0]
-    assert dz > 0.0
+    # dz = z[1] - z[0]
+    dz = np.zeros(len(z))
+    dz[:-1] = z[1:] - z[:-1]
+    dz[-1] = dz[-1]
+
+    assert dz[0] > 0.0
     kernel = independent_vars[2]
     dp_temp = independent_vars[3]
 
@@ -383,8 +410,8 @@ def get_sens_kernel(config, sta, f_min, z):
         fint = interp1d(np.abs(z_k - 6371000.0), vs_k,
                         bounds_error=False, fill_value=0, kind="nearest")  # interpolate to the z defined here
         K_vs = fint(z)
-        if config["suppress_shallow_sensitivity"]:
-            K_vs[config["z"] < config["depth_to_sens"]] = 0.0
+        #if config["suppress_shallow_sensitivity"]:
+        #    K_vs[config["z"] < config["depth_to_sens"]] = 0.0
         success = True
 
     except:
