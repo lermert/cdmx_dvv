@@ -135,7 +135,7 @@ def kernels_map(sta):
                    "MIXC": "MIXC",
                    "CIRE": "CIRE",
                    "ESTA": "cjvm",
-                   "TEPE": "TEPE"}
+                   "TEPE": "unm"}
 
     return(kernels_map[sta])
 
