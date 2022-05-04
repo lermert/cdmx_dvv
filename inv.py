@@ -35,6 +35,31 @@ def evaluate_modelfq(ind_vars, params, return_all=False):
         return(dv_rain + dv_temp + dv_quake + dv_lin, [dv_rain, dv_temp, dv_quake, dv_lin])
 
 
+def evaluate_modelf_noquake(ind_vars, params, return_all=False):
+    t = ind_vars[0]
+    z = ind_vars[1]
+    kernel_vs = ind_vars[2]
+    kernel_vs_temp = ind_vars[3]
+    rho = ind_vars[4]
+    dp_rain = ind_vars[5]
+    dp_temp = ind_vars[6]
+
+    p0 = 10. ** params[0]
+    slope = params[1] / (365. * 86400)
+    const = params[2]
+    tsens = 10. ** params[3]
+
+    dv_rain = func_rain([z, dp_rain, rho, kernel_vs], [p0])
+    dv_temp = func_temp([t, z, kernel_vs_temp, dp_temp], [tsens])
+    dv_lin = func_lin([t], [slope, const])
+    #print(dv_rain.max(), dv_temp.max(), dv_quake.max(), dv_lin.max())
+    #print(dv_rain.mean(), dv_temp.mean(), dv_quake.mean(), dv_lin.mean())
+    if not return_all:
+        return(dv_rain + dv_temp + dv_lin)
+    else:
+        return(dv_rain + dv_temp + dv_lin, [dv_rain, dv_temp, dv_lin])
+
+
 def evaluate_modelf(ind_vars, params, return_all=False):
     t = ind_vars[0]
     z = ind_vars[1]
@@ -418,7 +443,9 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
 
     if fmodel == "modelf":
         synth = evaluate_modelf(ind_vars, mparams)
-    if fmodel == "modelfa":
+    elif fmodel == "modelf_noquake":
+        synth = evaluate_modelf_noquake(ind_vars, mparams)
+    elif fmodel == "modelfa":
         synth = evaluate_modelfa(ind_vars, mparams)
     elif fmodel == "modelfq":
         synth = evaluate_modelfq(ind_vars, mparams)
