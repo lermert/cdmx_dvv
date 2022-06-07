@@ -1,7 +1,45 @@
 import numpy as np
 from math import sqrt, pi
 from model_tools import func_rain, func_quake, func_healing, func_temp1,\
-func_lin, func_pseudo_SSW, func_rain1, func_temp
+func_lin, func_pseudo_SSW, func_rain1, func_temp, func_rain_rhophi
+
+def evaluate_model_rhophi(ind_vars, params, return_all=False):
+    t = ind_vars[0]
+    z = ind_vars[1]
+    kernel_vs = ind_vars[2]
+    kernel_vs_temp = ind_vars[3]
+    rho = ind_vars[4]
+    dp_rain = ind_vars[5]
+    dp_temp = ind_vars[6]
+    quakes_timestamps = ind_vars[7]
+
+    p0 = 10. ** params[0]
+    phi = params[1]
+    tau_maxs = [10. ** p for p in params[2: 2 + len(quakes_timestamps)]]
+    drops = params[2 + len(quakes_timestamps): 2 + 2 * len(quakes_timestamps)]
+    slope = params[2 + 2 * len(quakes_timestamps)] / (365. * 86400)
+    const = params[3 + 2 * len(quakes_timestamps)]
+    tsens = 10. ** params[4 + 2 * len(quakes_timestamps)]
+
+    dv_rain = func_rain_rhophi([z, dp_rain, rho, kernel_vs], [p0, phi])
+    dv_temp = func_temp([t, z, kernel_vs_temp, dp_temp], [tsens])
+    # print("*"* 88)
+    # print("dp temp: ", dp_temp.min(), dp_temp.max())
+    # print("dv temp: ", dv_temp.min(), dv_temp.max())
+    # print("kernel: ", kernel_vs.min(), kernel_vs.max())
+    # print("*"* 88)
+    
+    dv_quake = np.zeros(len(t))
+    for ixq, q in enumerate(quakes_timestamps):
+        dv_quake += func_healing([t], [tau_maxs[ixq], drops[ixq]], time_quake=q)
+    dv_lin = func_lin([t], [slope, const])
+    #print(dv_rain.max(), dv_temp.max(), dv_quake.max(), dv_lin.max())
+    #print(dv_rain.mean(), dv_temp.mean(), dv_quake.mean(), dv_lin.mean())
+    if not return_all:
+        return(dv_rain + dv_temp + dv_quake + dv_lin)
+    else:
+        return(dv_rain + dv_temp + dv_quake + dv_lin, [dv_rain, dv_temp, dv_quake, dv_lin])
+
 
 def evaluate_modelfq(ind_vars, params, return_all=False):
     t = ind_vars[0]
@@ -341,8 +379,8 @@ def get_mcmc_bounds(config):
     lower_bounds = []
     upper_bounds = []
     for i, p in enumerate(config["list_params"]):
-        if p == "waterlevel_p" or p == "phi":
-            # bounds p0, phi
+        if p == "waterlevel_p":
+            # bounds p0,
             lower_bounds.append(np.log10(config["bounds_{}".format(p)][0]))
             upper_bounds.append(np.log10(config["bounds_{}".format(p)][1]))
         elif p == "tau_max":
@@ -389,7 +427,7 @@ def get_initial_position_from_mlmodel(params_mod, config):
     init_pos = [] #params_mod.copy()
 
     for i, p in enumerate(config["list_params"]):
-        if p == "waterlevel_p" or p == "phi":
+        if p == "waterlevel_p":
             init_pos.append(np.log10(params_mod[i]))
         elif p == "tau_max":
             for ixq, q in enumerate(config["quakes"]):
@@ -441,7 +479,9 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
     else:
         mparams = params
 
-    if fmodel == "modelf":
+    if fmodel == "model_rhophi":
+        synth = evaluate_model_rhophi(ind_vars, mparams)
+    elif fmodel == "modelf":
         synth = evaluate_modelf(ind_vars, mparams)
     elif fmodel == "modelf_noquake":
         synth = evaluate_modelf_noquake(ind_vars, mparams)
@@ -465,6 +505,10 @@ def log_likelihood_for_emcee(params, ind_vars, data, data_err, fmodel, error_is_
         synth = evaluate_model5(ind_vars, mparams)
     elif fmodel == "model6":
         synth = evaluate_model6(ind_vars, mparams)
+
+    if not "synth" in locals():
+        raise ValueError("You must specify a model that exists as \"model\" in the input file.\nPlease check lines 482 ff of the inv.py for existing models.")
+
 
     # data could be several dimensions
     if np.ndim(data) == 1:

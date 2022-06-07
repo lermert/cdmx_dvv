@@ -9,7 +9,7 @@ from model_tools_kurama import logheal_llc, GWL_SSW06
 from scipy.interpolate import interp1d
 from glob import glob
 from data_preparation import kernels_map
-
+    
 def parse_input(configfile):
 
     config = yaml.safe_load(open(configfile))
@@ -62,6 +62,17 @@ def parse_input(configfile):
 #################################################
 # Hydrology: 1-D poroelastic response to rainfall
 #################################################
+def get_effective_pressure(rhophi, z, rhos):
+    p = np.zeros(len(z))
+    dz = np.zeros(len(z))
+    dz[:-1] = z[1:] - z[:-1]
+    dz[-1] = dz[-2]
+
+    p[1: ] += np.cumsum(rhos * 9.81 * dz)[:-1]  # overburden
+
+    # parameter rhophi: rho water * porosity (assuming that there is no depth variation in either)
+    p[1: ] -= z[1:] * rhophi * 9.81 # roughly estimated pore pressure -- just set to hydrostatic pressure here
+    return(p)
 
 def model_SW_dsdp(p_in, waterlevel=100.):
     # 1 / vs  del v_s / del p: Derivative of shear wave velocity to effective pressure
@@ -154,12 +165,35 @@ def func_rain(independent_vars, params):
     #dz = z[1] - z[0]
     dz = np.zeros(len(z))
     dz[:-1] = z[1:] - z[:-1]
-    dz[-1] = dz[-1]
+    dz[-1] = dz[-2]
 
     waterlevel = params[0]
 
     p = np.zeros(len(z))
     p[1: ] = np.cumsum(rhos * 9.81 * dz)[:-1]  # overburden / hydrostatic pressure
+    
+    stress_sensitivity = model_SW_dsdp(p, waterlevel)
+    dv_rain = np.dot(-dp_rain, stress_sensitivity * kernel * dz)
+
+    return(dv_rain)
+
+def func_rain_rhophi(independent_vars, params):
+    # This function does the bookkeeping for predicting dv/v from pore pressure change.
+    z = independent_vars[0]
+    dp_rain = independent_vars[1]
+    rhos = independent_vars[2]
+    kernel = independent_vars[3]
+    #dz = z[1] - z[0]
+    dz = np.zeros(len(z))
+    dz[:-1] = z[1:] - z[:-1]
+    dz[-1] = dz[-1]
+
+    waterlevel = params[0]
+    phi = params[1]
+    rhophi = 1000.0 * phi
+
+    p = get_effective_pressure(rhophi, z, rhos)
+    
     stress_sensitivity = model_SW_dsdp(p, waterlevel)
     dv_rain = np.dot(-dp_rain, stress_sensitivity * kernel * dz)
 
