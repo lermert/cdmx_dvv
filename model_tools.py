@@ -70,8 +70,8 @@ def get_effective_pressure(rhophi, z, rhos):
 
     p[1: ] += np.cumsum(rhos * 9.81 * dz)[:-1]  # overburden
 
-    # parameter rhophi: rho water * porosity (assuming that there is no depth variation in either)
-    p[1: ] -= z[1:] * rhophi * 9.81 # roughly estimated pore pressure -- just set to hydrostatic pressure here
+    # parameter rhophi: rho water * porosity
+    p[1: ] -= z[1:] * rhophi[1:] * 9.81 # roughly estimated pore pressure -- just set to hydrostatic pressure here
     return(p)
 
 def model_SW_dsdp(p_in, waterlevel=100.):
@@ -161,16 +161,19 @@ def func_rain(independent_vars, params):
     z = independent_vars[0]
     dp_rain = independent_vars[1]
     rhos = independent_vars[2]
-    kernel = independent_vars[3]
-    #dz = z[1] - z[0]
+    phis = independent_vars[3]
+    kernel = independent_vars[4]
+
     dz = np.zeros(len(z))
     dz[:-1] = z[1:] - z[:-1]
     dz[-1] = dz[-2]
 
     waterlevel = params[0]
 
-    p = np.zeros(len(z))
-    p[1: ] = np.cumsum(rhos * 9.81 * dz)[:-1]  # overburden / hydrostatic pressure
+    rhophi = 1000.0 * phis
+    p = get_effective_pressure(rhophi, z, rhos)
+    # p = np.zeros(len(z))
+    # p[1: ] = np.cumsum(rhos * 9.81 * dz)[:-1]  # overburden / hydrostatic pressure
     
     stress_sensitivity = model_SW_dsdp(p, waterlevel)
     dv_rain = np.dot(-dp_rain, stress_sensitivity * kernel * dz)
@@ -412,6 +415,17 @@ def get_rho_nu(z, sta):
     rhos = np.array(rhos)
     nus = np.array(nus)
     return(rhos, nus)
+
+def get_rho_phi(z, sta):
+    rhos = []
+    phis = []
+    for zz in z:
+        vs, vp, rho, phi = model_cdmx_discrete(zz, sta, output="v_rho_phi")[0:4]
+        rhos.append(rho)
+        phis.append(phi)
+    rhos = np.array(rhos)
+    phis = np.array(phis)
+    return(rhos, phis)
 
 #################################################
 # Bookkeeping to set up the full model

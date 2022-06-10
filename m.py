@@ -4,11 +4,11 @@ import numpy as np
 import emcee
 import matplotlib.pyplot as plt
 from scipy import optimize
-from model_tools import parse_input, func_sciopt, get_sens_kernel, get_rho_nu, get_rainload_p, func_rain1, \
+from model_tools import parse_input, func_sciopt, get_sens_kernel, get_rho_phi, get_rainload_p, func_rain1, \
 func_lin, func_quake, func_healing, func_rain, func_temp1, func_pseudo_SSW, get_temperature_z, func_temp, func_rain_rhophi
 from inv import set_bounds, get_mcmc_bounds, get_initial_position_from_mlmodel, evaluate_model6, evaluate_model0,\
 log_probability_for_emcee, evaluate_model2, evaluate_model1, evaluate_model4, evaluate_model3, evaluate_model5,\
-evaluate_model0a, evaluate_modelf, evaluate_modelfa, evaluate_modelfq, evaluate_modelf_noquake, evaluate_model_rhophi
+evaluate_model0a, evaluate_modelf, evaluate_modelfq, evaluate_modelf_noquake, evaluate_model_rhophi
 from data_preparation import get_met_data, kernels_map, prep_data, sta_to_metsta
 import os
 import sys
@@ -127,7 +127,8 @@ for ixsta, sta in enumerate(config["stas"]):
                             #K_vs_temp, success = get_sens_kernel(config, sta, (f_max - f_min) / 2. + f_min, tempz)
 
                             # get material parameters
-                            rhos, nus = get_rho_nu(modelz, station)
+                            rhos, phis = get_rho_phi(modelz, station)
+
 
 
                             ###############################################################################
@@ -151,28 +152,28 @@ for ixsta, sta in enumerate(config["stas"]):
                                 model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, slope, const, tsens:\
                                                func_sciopt(t,
                                                list_models=[func_rain, func_healing, func_lin, func_temp],
-                                               list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t], [t, tempz, K_vs_temp, dp_temp]],
+                                               list_vars=[[modelz, dp_rain, rhos, phis, K_vs], [t], [t], [t, tempz, K_vs_temp, dp_temp]],
                                                list_params=[[waterlevel_p], [tau_max, drop_eq], [slope, const], [tsens]],
                                                n_channels=1)
                             elif config["model"] == "modelf_noquake":
                                 model_to_fit = lambda t, waterlevel_p, slope, const, tsens:\
                                                func_sciopt(t,
                                                list_models=[func_rain, func_lin, func_temp],
-                                               list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t, tempz, K_vs_temp, dp_temp]],
+                                               list_vars=[[modelz, dp_rain, rhos, phis, K_vs], [t], [t, tempz, K_vs_temp, dp_temp]],
                                                list_params=[[waterlevel_p], [slope, const], [tsens]],
                                                n_channels=1)
-                            elif config["model"] == "modelfa":
-                                model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, tsens:\
-                                               func_sciopt(t,
-                                               list_models=[func_rain, func_healing, func_temp],
-                                               list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t, tempz, K_vs_temp, dp_temp]],
-                                               list_params=[[waterlevel_p], [tau_max, drop_eq], [tsens]],
-                                               n_channels=1)
+                            # elif config["model"] == "modelfa":
+                            #     model_to_fit = lambda t, waterlevel_p, tau_max, drop_eq, tsens:\
+                            #                    func_sciopt(t,
+                            #                    list_models=[func_rain, func_healing, func_temp],
+                            #                    list_vars=[[modelz, dp_rain, rhos, phis, K_vs], [t], [t, tempz, K_vs_temp, dp_temp]],
+                            #                    list_params=[[waterlevel_p], [tau_max, drop_eq], [tsens]],
+                            #                    n_channels=1)
                             elif config["model"] == "modelfq":
                                 model_to_fit = lambda t, waterlevel_p, drop_eq, recovery, slope, const, tsens:\
                                                func_sciopt(t,
                                                list_models=[func_rain, func_quake, func_lin, func_temp],
-                                               list_vars=[[modelz, dp_rain, rhos, K_vs], [t], [t], [t, tempz, K_vs_temp, dp_temp]],
+                                               list_vars=[[modelz, dp_rain, rhos, phis, K_vs], [t], [t], [t, tempz, K_vs_temp, dp_temp]],
                                                list_params=[[waterlevel_p], [drop_eq, recovery], [slope, const], [tsens]],
                                                n_channels=1)
                             elif config["model"] == "model1" or config["model"] == "model0":
@@ -255,10 +256,10 @@ for ixsta, sta in enumerate(config["stas"]):
 
 
                             # set up the emcee sampler
-                            if config["model"] in ["modelf", "modelfa", "modelfq", "model_rhophi"]:
-                                indep_vars_emcee = [t, modelz, K_vs, K_vs_temp, rhos, dp_rain, dp_temp, qtimes]
+                            if config["model"] in ["modelf", "modelfq", "model_rhophi"]:
+                                indep_vars_emcee = [t, modelz, K_vs, K_vs_temp, rhos, phis, dp_rain, dp_temp, qtimes]
                             elif config["model"] in ["modelf_noquake"]:
-                                indep_vars_emcee = [t, modelz, K_vs, K_vs_temp, rhos, dp_rain, dp_temp]
+                                indep_vars_emcee = [t, modelz, K_vs, K_vs_temp, rhos, phis, dp_rain, dp_temp]
                             elif config["model"] in ["model1", "model2", "model3"]:
                                 indep_vars_emcee = [t, modelz, K_vs, rhos, dp_rain, temp_C, config["smoothing_temperature_n_samples"], config["time_resolution"]]
                             elif config["model"] in ["model0", "model0a"]:
@@ -393,8 +394,8 @@ for ixsta, sta in enumerate(config["stas"]):
                                 dvv_mcmc = evaluate_modelf_noquake(indep_vars_emcee, maxprob_sample)
                             elif config["model"] == "modelfq":
                                 dvv_mcmc = evaluate_modelfq(indep_vars_emcee, maxprob_sample)
-                            elif config["model"] == "modelfa":
-                                dvv_mcmc = evaluate_modelfa(indep_vars_emcee, maxprob_sample)
+                            #elif config["model"] == "modelfa":
+                            #    dvv_mcmc = evaluate_modelfa(indep_vars_emcee, maxprob_sample)
                             elif config["model"] == "model2":
                                 dvv_mcmc = evaluate_model2(indep_vars_emcee, maxprob_sample)
                             elif config["model"] == "model0":
