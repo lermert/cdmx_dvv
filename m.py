@@ -98,6 +98,9 @@ for ixsta, sta in enumerate(config["stas"]):
                             if os.path.exists(config["output_dir"] + "/tau_{}.npy".format(fob)):
                                 print("{} was already inverted, continuing...".format(fob))
                                 continue
+                            if os.path.exists(config["output_dir"] + "/percs_{}_noconv.npy".format(fob)):
+                                print("{} was already unsuccessfully inverted, continuing...".format(fob))
+                                continue
 
                             # tau, autocorrelation time: Diagnostic for convergence
                             have_tau = False
@@ -235,7 +238,7 @@ for ixsta, sta in enumerate(config["stas"]):
                             params_mod, covariance_mod =\
                                 optimize.curve_fit(model_to_fit, t,
                                                    data_array.ravel(), sigma=sigma_array.ravel(),
-                                                   bounds=bounds)
+                                                   bounds=bounds, maxfev=3000)
 
                             # save the arrays -- for convenience
                             foname = config["output_dir"] + "/data_{}.npy".format(datafob)

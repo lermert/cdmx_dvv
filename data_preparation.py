@@ -32,9 +32,12 @@ def prep_data(df, channel1, channel2, config, f_min, f_max, twin_min, twin_max, 
     dvv_df = dvv_df[dvv_df.t1_s == twin_max]
     dvv_df = dvv_df[dvv_df.f0_Hz == f_min]
     dvv_df = dvv_df[dvv_df.cluster == cluster]
-
+    
+    
     dat1 = stitch(dvv_df, config["reftimes"], plot=False)
+    print("Length stitched timeseries: ", len(dat1))
     dat1 = dat1[dat1.s_cc_after >= config["min_quality"]]
+    print("Length stitched timeseries after removing poor quality data :", len(dat1))
     dat1.s_dvv -= dat1.s_dvv.mean()
     if len(dat1) < 10:
         print("Insufficient number of data points with quality > {}".format(config["min_quality"]))
@@ -47,6 +50,11 @@ def prep_data(df, channel1, channel2, config, f_min, f_max, twin_min, twin_max, 
     # independent variables & observations
     dfsub = df[df.timestamps < min(config["t1"].timestamp, t1_data)].copy()
     dfsub = dfsub[dfsub.timestamps >= max(config["t0"].timestamp, t0_data)] 
+    if len(dfsub) < 10:
+        print("Insufficient number of data points in the right time window.")
+        return [], [], [], [], [], [], False
+
+    print("Length stitched timeseries after removing out-of-timewindow data: ", len(dfsub))
 
     # interpolate onto df timestamps of met data
     f = interp1d(dat1.s_timestamps, dat1.s_dvv, "linear", bounds_error=False, fill_value=0)
