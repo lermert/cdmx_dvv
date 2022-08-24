@@ -299,5 +299,7 @@ def model_cdmx_discrete(z, model, output="v_rho_q", z_is_radius=False):
         return(rho, A, C, F, L, N, 0., 0.)
     elif output == "v_rho_q":
         return(vs, vp, rho, qs, qp, 0., 0., 0.)
+    elif output == "v_rho_phi":
+        return(vs, vp, rho, fluid_volume_fraction)
     else:
-        return(0., 0., 0., 0., 0., 0., 0., 0.)
+        raise ValueError("output must be one of v_rho_q, v_rho_phi, elastic, poroelastic")
